@@ -23,8 +23,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DIST = os.path.join(ROOT, "dist")
 
 # 不复制的内容
-EXCLUDE_DIRS = {"dist", "tools", "deploy", ".git", "__pycache__", "_test", ".codegraph", ".dsh-debug", ".playwright-mcp", ".trae", ".workbuddy", ".zcode"}
-EXCLUDE_FILES = {"gen_placeholders.py"}
+# 注意: data/ 与 assets/img/uploads/ 是服务器运行时目录（管理员后台用），
+# 绝不进入构建产物；更新部署靠 tools/deploy.py，保护路径永不覆盖。
+EXCLUDE_DIRS = {"dist", "tools", "deploy", "data", "uploads", ".git", "__pycache__", "_test", ".codegraph", ".dsh-debug", ".playwright-mcp", ".trae", ".workbuddy", ".zcode"}
+EXCLUDE_FILES = {"gen_placeholders.py", "README.md", "LICENSE", ".gitignore"}
 
 # HTML 里的资源引用: src="assets/..." 或 href="assets/..."
 RES_RE = re.compile(r'(src|href)="(assets/[^"?#]+)"')

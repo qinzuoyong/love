@@ -1,0 +1,10 @@
+# 情侣网站 data/ 目录保护模板（由 tools/deploy.py 部署为远程 data/.htaccess）
+# 作用：data/ 存放管理员后台的全部自定义数据，禁止任何外部 HTTP 访问，
+#       只允许服务器上的 PHP 读写。
+<IfModule mod_authz_core.c>
+  Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+  Order deny,allow
+  Deny from all
+</IfModule>
