@@ -25,8 +25,12 @@
       let anchorMD = null;
       (CONFIG.anniversaries || []).forEach((item) => {
         if (item.type === "once" || item.lunar) return;
-        const p = item.date.split("-");
-        if (p.length === 2 && !isNaN(+p[0]) && !isNaN(+p[1]) && !anchorMD) anchorMD = p;
+        // 容错误填的完整日期("2024-05-20" → 取 5-20 当锚点)
+        const p = String(item.date || "").split("-").map((x) => +x);
+        let m, d;
+        if (p.length === 3 && p[0] > 31) { m = p[1]; d = p[2]; }
+        else if (p.length === 2) { m = p[0]; d = p[1]; }
+        if (m >= 1 && m <= 12 && d >= 1 && d <= 31 && !anchorMD) anchorMD = [m, d];
       });
       // 周期终点 = 最近的未来锚点(无锚点则用"在一起周年"), 起点 = 它的一年前
       let cycleEnd;
@@ -77,10 +81,12 @@
         memImg.onload = () => { if (!first) memImg.classList.add("mem-in"); };
         memImg.src = p.src;
         if (memCap) memCap.textContent = p.cap || "";
-        // 预加载下一张(不重复当前), 返回给下轮使用
-        let nxt;
-        do { nxt = (Math.random() * photos.length) | 0; } while (nxt === idx);
-        new Image().src = photos[nxt].src;
+        // 预加载下一张(不重复当前), 返回给下轮使用; 只剩 1 张时没有"下一张"可换
+        let nxt = idx;
+        if (photos.length > 1) {
+          do { nxt = (Math.random() * photos.length) | 0; } while (nxt === idx);
+          new Image().src = photos[nxt].src;
+        }
         return nxt;
       }
       let cur = show(doy % photos.length, true);

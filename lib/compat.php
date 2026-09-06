@@ -10,7 +10,7 @@ require_once __DIR__ . '/store.php';
 require_once __DIR__ . '/content.php';   // clean_id
 
 const COMPAT_FILE = 'compat.json';
-const COMPAT_QUESTIONS = 10;   // 每回合题目数（前端随机抽取的快照）
+const COMPAT_QUESTIONS = 10;   // 每回合题目数上限（题库不足时按实际数量进行）
 const COMPAT_Q_MAX = 200;      // 单题最大字符数
 const COMPAT_OPT_MAX = 60;     // 单选项最大字符数
 const COMPAT_HISTORY = 10;     // 历史返回条数

@@ -45,14 +45,21 @@
     const q = questions[index];
     const btns = optsEl.querySelectorAll(".quiz-opt");
 
-    if (i === q.a) {
+    // 答案统一转数字再比较：后台旧数据可能把 a 存成字符串 "3"，
+    // 严格 === 会静默判错（点正确选项也报错）
+    const a = Number(q.a);
+    const valid = Number.isInteger(a) && a >= 0 && a < q.opts.length;
+
+    if (valid && i === a) {
       score++;
       btn.classList.add("correct");
       msgEl.textContent = "🎉 答对啦！";
     } else {
       btn.classList.add("wrong");
-      btns[q.a].classList.add("correct");
-      msgEl.textContent = "😢 答错了…正确答案是「" + q.opts[q.a] + "」";
+      if (valid) btns[a].classList.add("correct");
+      msgEl.textContent = valid
+        ? "😢 答错了…正确答案是「" + q.opts[a] + "」"
+        : "😢 这道题的答案设置有误，先跳过吧";
     }
     btns.forEach((b) => (b.disabled = true));
 
