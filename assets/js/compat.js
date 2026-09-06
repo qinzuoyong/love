@@ -137,7 +137,7 @@
   /* ---------------- 界面渲染 ---------------- */
   function renderRolePick() {
     optsEl.innerHTML = "";
-    msgEl.innerHTML = "两个人各自答同一套 10 道题，都答完后一起看逐题对比。<br>第一人开始前先选一下身份：";
+    msgEl.innerHTML = "两个人各自答同一套随机题目，都答完后一起看逐题对比。<br>第一人开始前先选一下身份：";
     barEl.style.display = "none";
     quesEl.textContent = "💞 默契度测试";
     startBtn.style.display = "none";
@@ -364,7 +364,7 @@
         // 提交失败：保留答案，按钮恢复让用户重试
         optsEl.innerHTML = "";
         msgEl.innerHTML = "⚠️ 提交失败（" + esc(e.message) + "），请检查网络后重试";
-        quesEl.textContent = "第 " + (index) + " / " + questions.length + " 题";
+        quesEl.textContent = "已答完 " + questions.length + " / " + questions.length + " 题";
         startBtn.textContent = "🔄 重新提交";
         startBtn.dataset.mode = "retry";
         startBtn.style.display = "inline-flex";
@@ -374,7 +374,9 @@
   function startPolling() {
     stopPolling();
     pollTimer = setInterval(function () {
-      getStatus().then(function (j) {
+      // 必须强制实时 fetch：注入的 __SERVER_COMPAT__ 是页面加载那一刻的
+      // 快照，拿它轮询永远等不到对方答完（刷新过页面就中招）
+      getStatus(true).then(function (j) {
         if (j.active && j.active.status === "done") {
           stopPolling();
           dispatch(j);
@@ -461,7 +463,11 @@
     } else if (mode === "local_play2") {
       localSlot = 2; index = 0; answers = [];
       renderAnswering();
-    } else if (mode === "again" || mode === "retry") {
+    } else if (mode === "retry") {
+      // 重新提交：答案还在内存里，直接重发当前回合（绝不能开新回合丢答案）
+      startBtn.style.display = "none";
+      submitRound();
+    } else if (mode === "again") {
       if (!confirmReset) {
         confirmReset = true;
         startBtn.textContent = "⚠️ 确认开新一轮？（当前回合将作废）";
