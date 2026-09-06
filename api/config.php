@@ -7,7 +7,8 @@
    更新网站（上传覆盖）不会动 data/config.json，自定义内容永不丢失。
    ============================================================ */
 
-require __DIR__ . '/../lib/store.php';
+require_once __DIR__ . '/../lib/store.php';
+require_once __DIR__ . '/../lib/compat.php';   // 默契度回合注入视图
 
 header('Content-Type: application/javascript; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -37,3 +38,11 @@ echo 'window.__SERVER_CONTENT__ = ' . json_encode([
     'letters'  => (array)($ct['letters'] ?? []),
     'messages' => (array)($ct['messages'] ?? []),
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . ";\n";
+
+/* 默契度回合状态注入（小游戏页用）：active(进行中回合, 不含任何一方答案,
+   含 aDeviceId 由前端判断身份) + 完成历史。走 script 注入链路,
+   首次打开页面不依赖 fetch（避免 WAF 挑战拦截导致误判"服务器不可用"）。 */
+echo 'window.__SERVER_COMPAT__ = ' . json_encode(
+    compat_inject_view(),
+    JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+) . ";\n";

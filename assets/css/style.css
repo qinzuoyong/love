@@ -1313,6 +1313,56 @@ footer .brand-line { margin-bottom: 6px; font-weight: 600; color: var(--ink); }
 .compat-q { font-weight: 600; color: var(--ink); margin-bottom: 4px; }
 .compat-ans { color: var(--ink-soft); font-size: 0.84rem; line-height: 1.5; }
 
+/* 身份选择（发起挑战） */
+.compat-rolepick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 8px;
+}
+.compat-role-btn {
+  font-size: 1rem;
+  padding: 10px 20px;
+}
+
+/* 默契历史 */
+.compat-hist {
+  margin-top: 18px;
+  text-align: left;
+  border-top: 1px dashed rgba(240, 98, 146, 0.25);
+  padding-top: 12px;
+}
+.compat-hist-title {
+  font-size: 0.95rem;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+.compat-hist-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  margin: 6px 0;
+  border: 1px solid rgba(240, 98, 146, 0.15);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: background 0.2s;
+}
+.compat-hist-row:hover { background: rgba(240, 98, 146, 0.06); }
+.compat-hist-pct {
+  font-weight: 700;
+  color: var(--rose-deep);
+  font-variant-numeric: tabular-nums;
+  min-width: 44px;
+}
+.compat-hist-info { flex: 1; font-size: 0.85rem; color: var(--ink-soft); }
+.compat-hist-time { font-size: 0.75rem; color: var(--ink-soft); opacity: 0.8; }
+
 /* ---------- 响应式 ---------- */
 @media (max-width: 900px) {
   .masonry { columns: 2; }

@@ -95,13 +95,23 @@ switch ($action) {
             'photos'   => love_read('content.json', [])['photos'] ?? [],
             'letters'  => love_read('content.json', [])['letters'] ?? [],
             'messages' => love_read('content.json', [])['messages'] ?? [],
+            'compat'   => love_read('compat.json', [])['rounds'] ?? [],
         ]]);
 
     case 'content_delete':   // 管理员可删任意内容（含照片文件）
         $kind = (string)($in['kind'] ?? '');
         $uid = (string)($in['uid'] ?? '');
-        if (!in_array($kind, ['photos', 'letters', 'messages'], true) || $uid === '') {
+        if (!in_array($kind, ['photos', 'letters', 'messages', 'compat'], true) || $uid === '') {
             love_json(['ok' => false, 'error' => '参数错误'], 400);
+        }
+        if ($kind === 'compat') {
+            $ok = love_mutate('compat.json', function ($d) use ($uid) {
+                $d['rounds'] = array_values(array_filter((array)($d['rounds'] ?? []), function ($r) use ($uid) {
+                    return ($r['id'] ?? '') !== $uid;
+                }));
+                return $d;
+            }, []);
+            love_json(['ok' => is_array($ok)]);
         }
         $c = love_read('content.json', []);
         $target = null;
@@ -143,7 +153,7 @@ switch ($action) {
 
     case 'backup':
         love_json(['ok' => true, 'backup' => [
-            'version' => 1,
+            'version' => 2,
             'time' => date('c'),
             'config'  => love_read('config.json', []),
             'content' => [
@@ -151,6 +161,7 @@ switch ($action) {
                 'letters'  => (array)(love_read('content.json', [])['letters'] ?? []),
                 'messages' => (array)(love_read('content.json', [])['messages'] ?? []),
             ],
+            'compat' => love_read('compat.json', []),
             'admin' => admin_account(),
         ]]);
 
@@ -168,6 +179,9 @@ switch ($action) {
                 if (isset($b['content'][$k]) && is_array($b['content'][$k])) $ct[$k] = $b['content'][$k];
             }
             $ok = $ok && love_write('content.json', $ct);
+        }
+        if (isset($b['compat']) && is_array($b['compat']) && is_array($b['compat']['rounds'] ?? null)) {
+            $ok = $ok && love_write('compat.json', $b['compat']);
         }
         if (isset($b['admin']) && is_array($b['admin']) && !empty($b['admin']['username']) && !empty($b['admin']['pass_hash'])) {
             $ok = $ok && love_write('admin.json', ['username' => $b['admin']['username'], 'pass_hash' => $b['admin']['pass_hash'], 'created' => $b['admin']['created'] ?? time()]);
