@@ -209,3 +209,9 @@ function __mergeConfig(base, over) {
 }
 
 const CONFIG = __mergeConfig(DEFAULT_CONFIG, window.__SERVER_OVERRIDES__ || null);
+
+/* 注入自检：部署环境(http/https)下若没拿到服务器覆盖，提示刷新排查
+   （本地 file:// 直接打开不算失败，不提示） */
+if (typeof window.__SERVER_OVERRIDES__ === "undefined" && /^https?:$/.test(location.protocol)) {
+  console.warn("[love] 服务器配置注入失败：页面将显示默认配置。请刷新页面重试；若仍复现，检查主机防火墙/WAF 是否拦截 api/config.php");
+}
