@@ -43,7 +43,9 @@ function compat_throttled(): bool {
 
 /* ---------- 校验 ---------- */
 function compat_sanitize_questions($questions): ?array {
-    if (!is_array($questions) || count($questions) !== COMPAT_QUESTIONS) return null;
+    // 题库被删到 10 题以下时，按实际数量照常进行（2~10 题），
+    // 否则 create 永远失败、前端静默降级本地模式，看起来像服务器坏了
+    if (!is_array($questions) || count($questions) < 2 || count($questions) > COMPAT_QUESTIONS) return null;
     $out = [];
     foreach ($questions as $q) {
         if (!is_array($q)) return null;

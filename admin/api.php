@@ -19,6 +19,21 @@ function admin_account(): array {
     return is_array($a) ? $a : [];
 }
 
+/* quiz 答案归一：后台旧版/手改 JSON 可能把 a 存成字符串或越界下标，
+   写盘前统一校正为 0..opts-1 内的整数（前台 game.js 用 === 严格比较，
+   字符串 "3" 会静默判错——点对正确选项也报错）。 */
+function normalize_quiz(array $cfg): array {
+    if (!is_array($cfg['quiz'] ?? null)) return $cfg;
+    foreach ($cfg['quiz'] as $i => $q) {
+        if (!is_array($q)) continue;
+        $n = is_array($q['opts'] ?? null) ? count($q['opts']) : 0;
+        $a = (int)($q['a'] ?? 0);
+        if ($a < 0 || $a >= max(1, $n)) $a = 0;
+        $cfg['quiz'][$i]['a'] = $a;
+    }
+    return $cfg;
+}
+
 function require_csrf(array $in): void {
     if (!love_csrf_ok($in['csrf'] ?? null)) love_json(['ok' => false, 'error' => '页面已过期，请刷新后重试'], 403);
 }
@@ -87,6 +102,7 @@ switch ($action) {
         foreach (CFG_KEYS as $k) {
             if (array_key_exists($k, $ov)) $out[$k] = $ov[$k];
         }
+        $out = normalize_quiz($out);
         if (!love_write('config.json', $out)) love_json(['ok' => false, 'error' => '保存失败（data 目录不可写？）'], 500);
         love_json(['ok' => true, 'saved' => array_keys($out)]);
 
@@ -171,6 +187,7 @@ switch ($action) {
         if (isset($b['config']) && is_array($b['config'])) {
             $cfg = [];
             foreach (CFG_KEYS as $k) if (array_key_exists($k, $b['config'])) $cfg[$k] = $b['config'][$k];
+            $cfg = normalize_quiz($cfg);
             $ok = $ok && love_write('config.json', $cfg);
         }
         if (isset($b['content']) && is_array($b['content'])) {
