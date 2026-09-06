@@ -12,13 +12,15 @@
 const DEFAULT_CONFIG = {
   /* ---------- 你们的名字 ----------
      ★★★ 把"待定A / 待定B"改成你们的真名/昵称 ★★★
-     全站所有显示（导航、主页标题、问候语、页面标题…）都会跟着变 */
+     全站所有显示（导航、主页标题、问候语、页面标题…）都会跟着变
+     （其他所有引用名字的地方也会自动同步，无需逐处修改） */
   names: {
     boy: "待定A",       // 男生昵称
     girl: "待定B",      // 女生昵称
   },
 
-  /* ---------- 重要日期 ---------- */
+  /* ---------- 重要日期 ----------
+     改这里后，auto 标记的条目（相恋100天/一周年/第一次相遇）会自动重算 */
   startDate: "2023-05-20",   // 在一起的日期（格式：年-月-日）
   password: "520520",        // 解锁页密码（想取消密码就留空 ""，会直接进入）
 
@@ -56,24 +58,28 @@ const DEFAULT_CONFIG = {
      date: 格式 "月-日"（repeat）或 "年-月-日"（once）
      lunar: true   表示农历生日！date 写农历月-日（如 "8-15" 中秋）
                    闰月生日写 "闰4-15"（自动找下一个有该闰月的年份）
-                   网站会自动换算成今年/明年对应的真实公历日期来倒计时     */
+                   网站会自动换算成今年/明年对应的真实公历日期来倒计时
+     auto: 强相关日期自动计算（不用手填 date）：
+           "days100" = 在一起第 100 天（任意天数 daysN）
+           "year1"   = 在一起一周年（任意周年 yearN）          */
   anniversaries: [
     { icon: "💘", title: "恋爱纪念日", date: "05-20",  type: "repeat" },
     { icon: "🎂", title: "待定A的生日", date: "10-24",  type: "repeat" },
     { icon: "🍰", title: "待定B的生日", date: "3-8",   type: "repeat", lunar: true },
-    { icon: "❤️", title: "相恋100天",  date: "2023-08-28", type: "once" },
-    { icon: "💍", title: "相恋一周年", date: "2024-05-20", type: "once" },
+    { icon: "❤️", title: "相恋100天",  date: "2023-08-28", type: "once", auto: "days100" },
+    { icon: "💍", title: "相恋一周年", date: "2024-05-20", type: "once", auto: "year1" },
     { icon: "🎄", title: "圣诞节",     date: "12-25",  type: "repeat" },
   ],
 
   /* ---------- 时光轴（按时间顺序自动排列） ----------
-     date 晚于今天的事件会显示"即将到来"样式（如未来的计划/约会） */
+     date 晚于今天的事件会显示"即将到来"样式（如未来的计划/约会）
+     auto: "start" = 在一起的日期（如"第一次相遇"）            */
   timeline: [
-    { date: "2023-05-20", icon: "👀", title: "第一次相遇", text: "在朋友的聚会上，一眼就注意到了你。那天你说的话不多，我却记了很久。" },
+    { date: "2023-05-20", icon: "👀", title: "第一次相遇", text: "在朋友的聚会上，一眼就注意到了你。那天你说的话不多，我却记了很久。", auto: "start" },
     { date: "2023-06-11", icon: "💬", title: "第一次约会", text: "一起看了场电影，散场后走了很远的路，路灯下我们谁都不舍得先说再见。" },
-    { date: "2023-08-28", icon: "💖", title: "在一起 100 天", text: "一百天很短，短到感觉昨天才刚认识；一百天很长，长到我们已经习惯了彼此。" },
+    { date: "2023-08-28", icon: "💖", title: "在一起 100 天", text: "一百天很短，短到感觉昨天才刚认识；一百天很长，长到我们已经习惯了彼此。", auto: "days100" },
     { date: "2024-02-14", icon: "🌹", title: "第一个情人节", text: "你收到花的时候眼睛亮晶晶的，那个表情我记到现在。" },
-    { date: "2024-05-20", icon: "🏠", title: "相恋一周年", text: "一起布置了属于我们的小家，你说‘这里以后就是我们的窝了’。" },
+    { date: "2024-05-20", icon: "🏠", title: "相恋一周年", text: "一起布置了属于我们的小家，你说‘这里以后就是我们的窝了’。", auto: "year1" },
     { date: "2025-07-12", icon: "✈️", title: "第一次旅行", text: "去了海边，日出的时候你在旁边睡着了，海风和你的呼吸声一样温柔。" },
     { date: "2026-12-31", icon: "🎆", title: "跨年之夜", text: "和你一起倒数，迎接新一年的第一秒。" },
   ],
@@ -208,7 +214,84 @@ function __mergeConfig(base, over) {
   return over;
 }
 
-const CONFIG = __mergeConfig(DEFAULT_CONFIG, window.__SERVER_OVERRIDES__ || null);
+/* ============================================================
+   派生层：强相关日期自动计算 + 名字全站自动同步
+   ------------------------------------------------------------
+   只需要改 names（你们的名字）和 startDate（在一起的日期），
+   其余强相关内容自动跟随：
+   - auto 标记（条目里加 auto 字段即可）：
+       "start"  = 在一起的日期
+       "daysN"  = 在一起第 N 天（如 days100）
+       "yearN"  = 在一起 N 周年（如 year1）
+   - 所有文案里的"待定A / 待定B"自动替换成当前名字
+     （手动改过、不含占位名的地方不受影响）
+   面板后台加载配置时也会执行本函数，保证表单与前台一致。
+   ============================================================ */
+function __deriveConfig(cfg) {
+  var out = {};
+  var boy = (cfg.names && cfg.names.boy) || "";
+  var girl = (cfg.names && cfg.names.girl) || "";
+
+  /* 1) 名字自动同步：除 names 本身外，所有字符串里的占位名替换成当前名字 */
+  function walk(v) {
+    if (typeof v === "string") {
+      if (boy) v = v.split("待定A").join(boy);
+      if (girl) v = v.split("待定B").join(girl);
+      return v;
+    }
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === "object") {
+      var o = {};
+      for (var k in v) o[k] = walk(v[k]);
+      return o;
+    }
+    return v;
+  }
+  for (var key in cfg) {
+    out[key] = key === "names" ? cfg[key] : walk(cfg[key]);
+  }
+
+  /* 2) 强相关日期自动计算 */
+  var start = out.startDate;
+  var base = null;
+  if (typeof start === "string" && /^\d{4}-\d{2}-\d{2}$/.test(start)) {
+    var d = new Date(start + "T00:00:00");
+    if (!isNaN(d.getTime())) base = d;
+  }
+  function pad(n) { return String(n).padStart(2, "0"); }
+  function fmt(d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
+  function calc(auto) {
+    if (!base) return null;
+    var m;
+    if (auto === "start") return fmt(base);
+    if ((m = /^days(\d+)$/.exec(auto))) {
+      var x = new Date(base); x.setDate(x.getDate() + parseInt(m[1], 10)); return fmt(x);
+    }
+    if ((m = /^year(\d+)$/.exec(auto))) {
+      var y = new Date(base); y.setFullYear(y.getFullYear() + parseInt(m[1], 10)); return fmt(y);
+    }
+    return null;
+  }
+  function process(list, isAnniv) {
+    if (!Array.isArray(list)) return list;
+    return list.map(function (item) {
+      if (!item || !item.auto) return item;
+      var v = calc(item.auto);
+      if (!v) return item;               // startDate 缺失/非法：保留原值
+      var o = {};
+      for (var k in item) o[k] = item[k];
+      o.date = v;
+      if (isAnniv) o.type = "once";
+      return o;
+    });
+  }
+  out.anniversaries = process(out.anniversaries, true);
+  out.timeline = process(out.timeline, false);
+  return out;
+}
+window.__deriveConfig = __deriveConfig;
+
+const CONFIG = __deriveConfig(__mergeConfig(DEFAULT_CONFIG, window.__SERVER_OVERRIDES__ || null));
 
 /* 注入自检：部署环境(http/https)下若没拿到服务器覆盖，提示刷新排查
    （本地 file:// 直接打开不算失败，不提示） */

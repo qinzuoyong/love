@@ -6,6 +6,7 @@
 2. 给 HTML 中引用的静态资源（css/js/图片）自动加版本戳 ?v=<内容md5前8位>
    - 文件内容改了 → 版本号自动变 → 浏览器必定拉新文件（部署后更新即时生效）
    - 文件没改 → 版本号不变 → 浏览器复用缓存（省流量、加载快）
+   支持 admin/ 等 PHP 页面的 ../assets/... 引用（同样打版本戳）
 
 用法：
     python tools/build.py          # 输出到 dist/
@@ -28,8 +29,8 @@ DIST = os.path.join(ROOT, "dist")
 EXCLUDE_DIRS = {"dist", "tools", "deploy", "data", "uploads", ".git", "__pycache__", "_test", ".codegraph", ".dsh-debug", ".playwright-mcp", ".trae", ".workbuddy", ".zcode"}
 EXCLUDE_FILES = {"gen_placeholders.py", "README.md", "LICENSE", ".gitignore"}
 
-# HTML 里的资源引用: src="assets/..." 或 href="assets/..."
-RES_RE = re.compile(r'(src|href)="(assets/[^"?#]+)"')
+# HTML 里的资源引用: src="assets/..." 或 href="assets/..."（含 admin 页的 ../assets/...）
+RES_RE = re.compile(r'(src|href)="((?:\.\./)?assets/[^"?#]+)"')
 
 
 def md5v(path):
@@ -48,7 +49,8 @@ def process_html(src_path, dst_path, versions):
 
     def repl(m):
         attr, res = m.group(1), m.group(2)
-        v = versions.get(res)
+        key = res[3:] if res.startswith("../") else res  # ../assets/... → assets/...
+        v = versions.get(key)
         if v:
             return '%s="%s?v=%s"' % (attr, res, v)
         return m.group(0)
@@ -80,7 +82,8 @@ def main():
             rel = os.path.relpath(src, ROOT)
             dst = os.path.join(out, rel)
             os.makedirs(os.path.dirname(dst), exist_ok=True)
-            if name.endswith(".html"):
+            if name.endswith(".html") or name.endswith(".php"):
+                # PHP 页面(如 admin/index.php)同样需要给资源引用打版本戳
                 html_files.append((src, dst))
             else:
                 shutil.copy2(src, dst)
