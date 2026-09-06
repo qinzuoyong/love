@@ -216,6 +216,9 @@
   const boardList = document.getElementById("boardList");
 
   function pad(n) { return String(n).padStart(2, "0"); }
+  // 时间戳归一成秒：服务器存秒，本机旧数据存毫秒。
+  // 排序必须统一单位，否则毫秒时间戳的旧留言永远排在所有服务器留言之上
+  function normTs(ts) { return ts > 1e12 ? Math.floor(ts / 1000) : (ts || 0); }
   function fmtTime(ts) {
     if (!ts) return "";
     const d = new Date(ts < 1e12 ? ts * 1000 : ts); // 服务器存秒，本机旧数据存毫秒
@@ -225,7 +228,7 @@
   function allMessages() {
     return normalizeLocal(BOARD_KEY, "m").map((m) => Object.assign({}, m, { local: true }))
       .concat(serverMessages.map((m) => Object.assign({}, m, { server: true })))
-      .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+      .sort((a, b) => normTs(b.ts) - normTs(a.ts));
   }
 
   function renderBoard() {
@@ -273,7 +276,7 @@
             serverMessages.push(j.record);
             nameEl.value = ""; textEl.value = "";
             renderBoard();
-            toast("已悄悄写下，存到服务器 💌");
+            toast("已悄悄写下，存到服务器 💕");
           })
           .catch(() => saveLocalMessage(rec));
       } else {
