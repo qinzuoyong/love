@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>我们的网站 · 首页</title>
+  <meta name="description" content="属于我们两个人的小网站">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23f06292' d='M12 21s-6.7-4.35-9.33-8.11C.9 10.2 1.6 6.5 4.5 5.3c2.5-1.04 5.05.03 6.5 2.17 1.45-2.14 4-3.21 6.5-2.17 2.9 1.2 3.6 4.9 1.83 7.59C18.7 16.65 12 21 12 21z'/%3E%3C/svg%3E">
+  <meta property="og:title" content="我们的网站 · 首页">
+  <meta property="og:description" content="属于我们两个人的小网站">
+  <meta property="og:type" content="website">
+  <meta name="theme-color" content="#f06292">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script src="assets/js/config.js"></script>
+  <script src="assets/js/lunar.js"></script>
+</head>
+<body data-page="home.html">
+
+  <!-- 导航栏 -->
+  <nav id="nav">
+    <div class="nav-inner">
+      <a class="brand" href="home.html"><span class="heart">♥</span><span data-brand>我们的家</span></a>
+      <button id="navToggle" aria-label="菜单">☰</button>
+      <ul class="nav-links">
+        <li><a href="home.html">🏠 首页</a></li>
+        <li><a href="gallery.html">📸 相册</a></li>
+        <li><a href="timeline.html">🕰️ 时光轴</a></li>
+        <li><a href="anniversary.html">🎂 纪念日</a></li>
+        <li><a href="letter.html">💌 情书</a></li>
+        <li><a href="game.html">🎮 小游戏</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main>
+    <!-- Hero -->
+    <section class="hero">
+      <div class="hero-inner">
+        <p class="hero-greeting" id="heroGreeting"></p>
+        <h1 class="names" id="heroNames"></h1>
+        <p class="slogan" id="heroSlogan"></p>
+        <div class="rotator">
+          <div class="msg" id="rotMsg"></div>
+        </div>
+        <div class="hero-btns">
+          <a class="btn" href="gallery.html">📸 看我们的相册</a>
+          <a class="btn btn-ghost" href="letter.html">💌 读一封情书</a>
+        </div>
+
+        <!-- 今日特殊日(生日/纪念日当天) -->
+        <div class="today-banner" id="todayBanner" style="display:none"></div>
+      </div>
+    </section>
+
+    <!-- 在一起天数 -->
+    <section class="section stat-band">
+      <div class="container">
+        <div class="stat-grid">
+          <div class="stat-card glass reveal">
+            <div class="num" id="daysNum">0</div>
+            <div class="label">天</div>
+          </div>
+          <div class="stat-card glass reveal" style="transition-delay:80ms">
+            <div class="num" id="hoursNum">00</div>
+            <div class="label">时</div>
+          </div>
+          <div class="stat-card glass reveal" style="transition-delay:160ms">
+            <div class="num" id="minsNum">00</div>
+            <div class="label">分</div>
+          </div>
+          <div class="stat-card glass reveal" style="transition-delay:240ms">
+            <div class="num" id="secsNum">00</div>
+            <div class="label">秒</div>
+          </div>
+        </div>
+        <p class="hint reveal" id="daysHint"></p>
+      </div>
+    </section>
+
+    <!-- 恋爱进度环 + 回忆闪现 -->
+    <section class="section">
+      <div class="container">
+        <div class="progress-row">
+          <div class="progress-card glass reveal">
+            <div class="ring-wrap">
+              <svg class="ring" id="ringSvg" viewBox="0 0 120 120">
+                <circle class="ring-bg" cx="60" cy="60" r="54"></circle>
+                <circle class="ring-fill" id="ringFill" cx="60" cy="60" r="54"></circle>
+              </svg>
+              <div class="ring-center">
+                <div class="ring-pct" id="ringPct">0%</div>
+                <div class="ring-label">爱的进度</div>
+              </div>
+            </div>
+            <p class="ring-text" id="ringText"></p>
+          </div>
+          <div class="memory-card glass reveal" style="transition-delay:100ms">
+            <div class="memory-title">📸 我们的回忆</div>
+            <img class="mem-img" id="memoryImg" alt="回忆闪现">
+            <div class="memory-cap" id="memoryCap"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 介绍卡片 -->
+    <section class="section">
+      <div class="container">
+        <div class="section-title reveal">
+          <h2>关于我们</h2>
+          <p>一点一滴，都是爱的证据</p>
+        </div>
+        <div class="card-grid" id="cardGrid"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 页脚 -->
+  <footer>
+    <div class="brand-line">© <span id="footYear"></span> · <span class="foot-heart">♥</span> <span data-brand>我们的家</span></div>
+    <div>用爱写成的网站 · 每一天都是纪念日</div>
+  </footer>
+
+  <!-- 悬浮按钮 -->
+  <button id="musicBtn" aria-label="音乐"><span id="musicIcon">🎵</span></button>
+  <button id="topBtn" aria-label="返回顶部">↑</button>
+  <canvas id="fxCanvas"></canvas>
+
+  <!-- 脚本 -->
+  <script>
+    (function () {
+      // 时段问候语(可用 config.greeting 固定)
+      var greetEl = document.getElementById("heroGreeting");
+      if (greetEl) {
+        var g = (CONFIG.greeting || "").trim();
+        if (!g) {
+          var h = new Date().getHours();
+          var greet = h < 5 ? "夜深了" : h < 9 ? "早上好" : h < 12 ? "上午好" : h < 14 ? "中午好" : h < 18 ? "下午好" : h < 23 ? "晚上好" : "夜深了";
+          g = greet + "，我的" + CONFIG.names.girl;
+        }
+        greetEl.textContent = g;
+      }
+
+      // 标语
+      document.getElementById("heroSlogan").textContent = CONFIG.slogan;
+
+      // 情话轮播(打字机效果)
+      var msgs = CONFIG.messages && CONFIG.messages.length ? CONFIG.messages : ["我爱你"];
+      var el = document.getElementById("rotMsg");
+      var mi = 0;
+      var typing = null;
+      function show() {
+        el.classList.remove("show");
+        var text = msgs[mi % msgs.length];
+        mi++;
+        el.textContent = "";
+        el.classList.add("show");
+        var i = 0;
+        clearInterval(typing);
+        typing = setInterval(function () {
+          i++;
+          el.textContent = text.slice(0, i);
+          if (i >= text.length) clearInterval(typing);
+        }, 90);
+      }
+      show();
+      setInterval(show, 5200);
+
+      // 介绍卡片
+      var grid = document.getElementById("cardGrid");
+      CONFIG.homeCards.forEach(function (c, i) {
+        var d = document.createElement("div");
+        d.className = "feature-card glass reveal";
+        d.style.transitionDelay = (i % 3) * 90 + "ms";
+        d.innerHTML =
+          '<div class="icon">' + c.icon + "</div>" +
+          "<h3>" + c.title + "</h3>" +
+          "<p>" + c.text + "</p>" +
+          '<a class="link" href="' + c.link + '">' + c.linkText + "</a>";
+        grid.appendChild(d);
+      });
+
+      document.getElementById("footYear").textContent = new Date().getFullYear();
+    })();
+  </script>
+  <script src="assets/js/countdown.js"></script>
+  <script src="assets/js/main.js"></script>
+  <script src="assets/js/progress.js"></script>
+</body>
+</html>

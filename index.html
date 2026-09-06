@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>我们的网站 · 解锁</title>
+  <meta name="description" content="一份用心准备的小惊喜">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23f06292' d='M12 21s-6.7-4.35-9.33-8.11C.9 10.2 1.6 6.5 4.5 5.3c2.5-1.04 5.05.03 6.5 2.17 1.45-2.14 4-3.21 6.5-2.17 2.9 1.2 3.6 4.9 1.83 7.59C18.7 16.65 12 21 12 21z'/%3E%3C/svg%3E">
+  <meta property="og:title" content="我们的网站 · 解锁">
+  <meta property="og:description" content="一份用心准备的小惊喜">
+  <meta property="og:type" content="website">
+  <meta name="theme-color" content="#f06292">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script src="assets/js/config.js"></script>
+</head>
+<body class="unlock-body">
+  <canvas id="petalCanvas"></canvas>
+
+  <div class="unlock-card glass" id="unlockCard">
+    <span class="big-heart">💗</span>
+    <h1 id="unlockTitle">欢迎来到我们的秘密花园</h1>
+    <p class="sub" id="unlockSub"></p>
+    <input type="password" id="pwInput" placeholder="输入密码，轻轻叩门" autocomplete="off" maxlength="20">
+    <button class="btn" id="unlockBtn">🔓 开启我们的世界</button>
+    <div class="hint" id="pwHint"></div>
+  </div>
+
+  <script>
+    (function () {
+      var pw = CONFIG.password || "";
+      var input = document.getElementById("pwInput");
+      var btn = document.getElementById("unlockBtn");
+      var card = document.getElementById("unlockCard");
+      var sub = document.getElementById("unlockSub");
+      var hint = document.getElementById("pwHint");
+
+      sub.textContent = "这里是 " + CONFIG.names.boy + " ♥ " + CONFIG.names.girl + " 的小世界";
+
+      function goIn() {
+        sessionStorage.setItem("love-unlocked", "1");
+        location.href = "home.html";
+      }
+
+      function fail() {
+        card.classList.remove("shake");
+        void card.offsetWidth; // 重启动画
+        card.classList.add("shake");
+        input.value = "";
+        input.focus();
+        window.toast && window.toast("密码不对哦，再想想？");
+      }
+
+      // 未设置密码: 直接进入
+      if (!pw) {
+        input.style.display = "none";
+        btn.textContent = "💗 进入我们的世界";
+        hint.textContent = "（当前未设密码，点按钮直接进入）";
+      } else {
+        hint.textContent = "悄悄话：这个密码，只有你们俩知道 😉";
+      }
+
+      function submit() {
+        if (!pw) { goIn(); return; }
+        if (input.value === pw) goIn();
+        else fail();
+      }
+
+      // 已解锁过则直接进
+      if (sessionStorage.getItem("love-unlocked") === "1") {
+        location.replace("home.html");
+        return;
+      }
+
+      btn.addEventListener("click", submit);
+      input.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") submit();
+      });
+    })();
+  </script>
+
+  <script src="assets/js/main.js"></script>
+</body>
+</html>
