@@ -137,6 +137,7 @@
       if (document.hidden) { running = false; }
       else if (!running) { running = true; animLoop(frame); }
     });
+
     animLoop(frame);
   }
 
@@ -243,6 +244,8 @@
   let audioEl = null;
   let usingMp3 = false;
   let musicPlaying = false;
+  let audioFail = false;    // mp3 实际加载失败(服务器返回的可能是 WAF 挑战页而非音频)
+  let pendingPlay = false;  // 用户已点播放但音频还在下载, 就绪后自动续播
 
   const musicBtn = document.getElementById("musicBtn");
   if (musicBtn) {
@@ -252,15 +255,45 @@
       if (el) el.textContent = musicPlaying ? "🔊" : "🔇";
     }
 
+    // mp3 不可用时的兜底: 切内置合成旋律, 保证点了就一定有声音
+    function fallbackSynth(msg) {
+      usingMp3 = false;
+      audioFail = true;
+      pendingPlay = false;
+      if (audioEl) { try { audioEl.pause(); } catch (e) {} }
+      SynthMusic.start();
+      musicPlaying = SynthMusic.playing;
+      setMusicUI();
+      if (msg) toast(msg, true);
+    }
+
     // 探测 mp3 是否存在(仅 http 环境可行); file:// 下直接走合成音乐
     if (location.protocol.startsWith("http")) {
       fetch("assets/music/music.mp3", { method: "HEAD" })
         .then((r) => {
           if (!r.ok) return;
+          // 只认真正的音频响应: WAF 挑战页也是 200 但 content-type 是 text/html,
+          // 若放行会让 audioEl 加载 HTML 而静默无声
+          const ct = (r.headers.get("content-type") || "").toLowerCase();
+          if (!/audio|mpeg|octet-stream/.test(ct)) return;
           usingMp3 = true;
           audioEl = new Audio("assets/music/music.mp3");
           audioEl.loop = true;
           audioEl.volume = 0.55;
+          audioEl.addEventListener("error", function () {
+            if (usingMp3) fallbackSynth("音频加载失败，已切换内置旋律");
+          });
+          // 用户点过播放而音频还没就绪(服务器慢时可能等十几秒): 就绪后自动续播
+          audioEl.addEventListener("canplay", function () {
+            if (pendingPlay && usingMp3 && !audioFail) {
+              pendingPlay = false;
+              audioEl.play().then(function () {
+                musicPlaying = true;
+                setMusicUI();
+                toast("♪ 音乐响起，送给你");
+              }).catch(function () { fallbackSynth("播放失败，已切换内置旋律"); });
+            }
+          });
           // 若合成音乐已在播放, 立即停掉, 避免双音轨
           if (SynthMusic.playing) SynthMusic.stop();
         })
@@ -268,13 +301,22 @@
     }
 
     musicBtn.addEventListener("click", () => {
-      if (!usingMp3) {
+      if (usingMp3 && audioEl && !audioFail) {
+        if (audioEl.paused) {
+          if (audioEl.readyState >= 3) {
+            audioEl.play().catch(() => fallbackSynth("播放失败，已切换内置旋律"));
+          } else {
+            // 音频还在下载: 明确提示"加载中", 就绪后自动播放, 不会让人以为坏了
+            pendingPlay = true;
+            toast("♪ 音乐加载中，请稍候…");
+          }
+        } else {
+          audioEl.pause();
+        }
+        musicPlaying = !audioEl.paused;
+      } else {
         SynthMusic.toggle();
         musicPlaying = SynthMusic.playing;
-      } else if (audioEl) {
-        if (audioEl.paused) audioEl.play().catch(() => {});
-        else audioEl.pause();
-        musicPlaying = !audioEl.paused;
       }
       setMusicUI();
       if (musicPlaying) toast("♪ 音乐响起，送给你");

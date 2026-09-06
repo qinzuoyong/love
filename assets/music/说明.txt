@@ -1,4 +1,4 @@
-当前曲目: Canon in D Major(卡农钢琴独奏版)
+当前曲目: Canon in D Major(卡农钢琴独奏版 · 精华 60 秒循环)
 演奏: Kevin MacLeod(incompetech.com), 2006
 原作: Johann Pachelbel(帕赫贝尔, 约 1680 年, 作曲已属公有领域)
 来源: https://incompetech.com/music/royalty-free/mp3-royaltyfree/Canon%20in%20D%20Major.mp3
@@ -7,6 +7,13 @@
   背景音乐:Canon in D Major — Kevin MacLeod (incompetech.com) · CC BY 4.0
   许可证: https://creativecommons.org/licenses/by/4.0/
 
+制作说明: 从原曲 40s 处截取 60 秒精华段, 转码 48kbps 单声道(360KB),
+原因: InfinityFree 免费主机对大文件响应极慢(实测 ~7-13KB/s),
+整曲 5.9MB 需要 7 分钟以上才缓冲完, 点播放会长时间无声;
+360KB 在慢链路约 30-50 秒、正常网络秒开, 循环播放不显短。
+
 更换方法: 把新的 mp3 命名为 music.mp3 放到本目录(覆盖),
 刷新网页后会自动优先播放它, 不再使用内置的合成旋律。
+建议控制在 500KB 以内(服务器慢链路), 可用 ffmpeg 裁剪转码:
+  ffmpeg -i 源文件.mp3 -ss 起始秒 -t 时长秒 -b:a 48k -ac 1 music.mp3
 支持格式: mp3(其他格式如 ogg/aac 也可, 现代浏览器基本都支持)
