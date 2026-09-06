@@ -545,7 +545,7 @@ love_session();
     api("save_config", { overrides: collectOverrides() })
       .then(function (j) {
         dirty = false;
-        toast("✅ 已保存，全站立即生效（共 " + j.saved.length + " 项）");
+        toast("✅ 已保存（共 " + j.saved.length + " 项），前台页面刷新即可看到");
       })
       .catch(function (e) { toast("保存失败：" + e.message, true); })
       .finally(function () { btn.disabled = false; btn.textContent = "💾 保存全部修改"; });
