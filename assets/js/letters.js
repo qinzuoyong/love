@@ -214,43 +214,45 @@
 
   /* ---------- 悄悄话留言板 ---------- */
   const boardList = document.getElementById("boardList");
+
+  function pad(n) { return String(n).padStart(2, "0"); }
+  function fmtTime(ts) {
+    if (!ts) return "";
+    const d = new Date(ts < 1e12 ? ts * 1000 : ts); // 服务器存秒，本机旧数据存毫秒
+    return (d.getMonth() + 1) + "-" + d.getDate() + " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
+  }
+
+  function allMessages() {
+    return normalizeLocal(BOARD_KEY, "m").map((m) => Object.assign({}, m, { local: true }))
+      .concat(serverMessages.map((m) => Object.assign({}, m, { server: true })))
+      .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  }
+
+  function renderBoard() {
+    if (!boardList) return;
+    const list = allMessages();
+    if (!list.length) {
+      boardList.innerHTML = '<div class="board-empty">还没有留言，来说第一句吧 💕</div>';
+      return;
+    }
+    boardList.innerHTML = "";
+    list.forEach((m) => {
+      const canDel = m.local || (m.server && m.deviceId === S.deviceId);
+      const item = document.createElement("div");
+      item.className = "msg-item";
+      item.innerHTML =
+        '<div class="msg-main"><b>' + escapeHtml(m.name) + "</b> " +
+        '<span class="msg-text">' + escapeHtml(m.text) + "</span></div>" +
+        '<div class="msg-side"><span class="msg-time">' + fmtTime(m.ts) + "</span>" +
+        (canDel ? '<button class="msg-del" data-uid="' + m.uid + '" data-kind="' + (m.server ? "server" : "local") + '">✕</button>' : "") +
+        "</div>";
+      boardList.appendChild(item);
+    });
+  }
+
   if (boardList) {
     const nameEl = document.getElementById("msgName");
     const textEl = document.getElementById("msgText");
-
-    function pad(n) { return String(n).padStart(2, "0"); }
-    function fmtTime(ts) {
-      if (!ts) return "";
-      const d = new Date(ts < 1e12 ? ts * 1000 : ts); // 服务器存秒，本机旧数据存毫秒
-      return (d.getMonth() + 1) + "-" + d.getDate() + " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
-    }
-
-    function allMessages() {
-      return normalizeLocal(BOARD_KEY, "m").map((m) => Object.assign({}, m, { local: true }))
-        .concat(serverMessages.map((m) => Object.assign({}, m, { server: true })))
-        .sort((a, b) => (b.ts || 0) - (a.ts || 0));
-    }
-
-    function renderBoard() {
-      const list = allMessages();
-      if (!list.length) {
-        boardList.innerHTML = '<div class="board-empty">还没有留言，来说第一句吧 💕</div>';
-        return;
-      }
-      boardList.innerHTML = "";
-      list.forEach((m) => {
-        const canDel = m.local || (m.server && m.deviceId === S.deviceId);
-        const item = document.createElement("div");
-        item.className = "msg-item";
-        item.innerHTML =
-          '<div class="msg-main"><b>' + escapeHtml(m.name) + "</b> " +
-          '<span class="msg-text">' + escapeHtml(m.text) + "</span></div>" +
-          '<div class="msg-side"><span class="msg-time">' + fmtTime(m.ts) + "</span>" +
-          (canDel ? '<button class="msg-del" data-uid="' + m.uid + '" data-kind="' + (m.server ? "server" : "local") + '">✕</button>' : "") +
-          "</div>";
-        boardList.appendChild(item);
-      });
-    }
 
     function saveLocalMessage(rec) {
       const list = normalizeLocal(BOARD_KEY, "m");
@@ -271,7 +273,7 @@
             serverMessages.push(j.record);
             nameEl.value = ""; textEl.value = "";
             renderBoard();
-            toast("已悄悄写下，存到服务器 💕");
+            toast("已悄悄写下，存到服务器 💌");
           })
           .catch(() => saveLocalMessage(rec));
       } else {

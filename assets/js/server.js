@@ -30,6 +30,11 @@
     deviceId: deviceId(),
 
     fetchAll: function () {
+      // 优先使用页面加载时随 api/config.php 注入的数据（script 注入链路稳定，
+      // 不会被防火墙/WAF 的请求挑战拦截）。纯静态托管无注入时回退 fetch。
+      if (window.__SERVER_CONTENT__) {
+        return Promise.resolve(window.__SERVER_CONTENT__);
+      }
       return fetch(API + "?action=all", { cache: "no-store" })
         .then(function (r) {
           if (!r.ok) throw new Error("http " + r.status);
