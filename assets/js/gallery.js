@@ -24,6 +24,22 @@
     catch (e) { return false; }
   }
 
+  // 防 HTML 注入：照片说明 cap 可经公开接口提交任意文本，拼 innerHTML 前必须转义
+  function escapeHtml(str) {
+    return String(str == null ? "" : str).replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+  // 多来源照片（配置 gallery / 服务器 content.json / 本机）按 src 去重：
+  // 旧版后台上传会把同一张同时写进两处，相册页会显示两次
+  function dedupeBySrc(list) {
+    const seen = new Set();
+    return list.filter((p) => {
+      if (!p.src || seen.has(p.src)) return false;
+      seen.add(p.src);
+      return true;
+    });
+  }
+
   function localPhotos() {
     return readLSP(PHOTOS_KEY, []).map((p) => ({
       src: p.src, cat: "照片", cap: p.cap || "我们的新照片", local: true, uid: p.uid,
@@ -31,7 +47,7 @@
   }
 
   /* 照片列表 = 配置照片 + 本机旧照片（服务器照片稍后异步并入） */
-  let photos = (CONFIG.gallery || []).concat(localPhotos());
+  let photos = dedupeBySrc((CONFIG.gallery || []).concat(localPhotos()));
   let currentCat = "全部";
   let currentList = [];
   let currentIndex = 0;
@@ -64,9 +80,9 @@
       item.style.transitionDelay = (i % 6) * 60 + "ms";
       const showDel = p.local || (p.server && p.mine);
       item.innerHTML =
-        '<img src="' + p.src + '" alt="' + (p.cap || "") + '" loading="lazy">' +
-        (showDel ? '<button class="photo-del" data-uid="' + p.uid + '" aria-label="删除照片">✕</button>' : "") +
-        '<figcaption class="cap">' + (p.cap || "") + "</figcaption>";
+        '<img src="' + escapeHtml(p.src) + '" alt="' + escapeHtml(p.cap) + '" loading="lazy">' +
+        (showDel ? '<button class="photo-del" data-uid="' + escapeHtml(p.uid) + '" aria-label="删除照片">✕</button>' : "") +
+        '<figcaption class="cap">' + escapeHtml(p.cap) + "</figcaption>";
       item.addEventListener("click", (e) => {
         if (e.target.classList.contains("photo-del")) return; // 删除按钮不打开灯箱
         openLightbox(i);
@@ -206,7 +222,7 @@
           src: p.src, cat: "照片", cap: p.cap || "我们的新照片",
           server: true, mine: p.deviceId === S.deviceId, uid: p.uid,
         }));
-        photos = (CONFIG.gallery || []).concat(extras).concat(localPhotos());
+        photos = dedupeBySrc((CONFIG.gallery || []).concat(extras).concat(localPhotos()));
         rebuildCats();
         render();
       })
@@ -240,7 +256,7 @@
   function updateCap() {
     lbCap.innerHTML =
       '<span class="lb-idx">' + (currentIndex + 1) + " / " + currentList.length + "</span>" +
-      (currentList[currentIndex].cap || "");
+      escapeHtml(currentList[currentIndex].cap);
   }
 
   document.getElementById("lbClose").addEventListener("click", closeLightbox);

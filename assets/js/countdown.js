@@ -49,6 +49,16 @@
     setInterval(tick, 1000);
   }
 
+  /* 解析 repeat 型纪念日日期(月-日)；容错误填的完整日期（"2024-05-20"→5月20日） */
+  function parseMD(dateStr) {
+    const p = String(dateStr || "").split("-").map((x) => parseInt(x, 10));
+    let m, d;
+    if (p.length === 3 && p[0] > 31) { m = p[1]; d = p[2]; }   // 带年份的完整日期 → 取月-日
+    else if (p.length >= 2) { m = p[0]; d = p[1]; }
+    if (!m || !d || m < 1 || m > 12 || d < 1 || d > 31) return null;
+    return [m, d];
+  }
+
   /* ---------- 今日特殊日(主页横幅): 生日/纪念日当天自动庆祝 ---------- */
   function checkToday() {
     const el = document.getElementById("todayBanner");
@@ -77,9 +87,8 @@
         }
         return;
       }
-      const parts = item.date.split("-");
-      if (parseInt(parts[0], 10) === today.getMonth() + 1 &&
-          parseInt(parts[1], 10) === today.getDate()) {
+      const md = parseMD(item.date);
+      if (md && md[0] === today.getMonth() + 1 && md[1] === today.getDate()) {
         found.push(item);
       }
     });
@@ -137,11 +146,14 @@
         if (!nowLunar) return null;
 
         if (leap) {
-          // 闰月生日: 找下一个出现该闰月的农历年(最多看 8 年)
+          // 闰月生日: 找下一个出现该闰月的农历年(最多看 8 年)。
+          // 今年闰月已过的必须跳过，否则卡片会整年停在"就是今天"
           for (let y = nowLunar.year; y <= nowLunar.year + 8; y++) {
             if (Lunar.leapMonth(y) === lm) {
               const s = Lunar.toSolar(y, lm, ld, true);
-              if (s) { target = new Date(s.year, s.month - 1, s.day); break; }
+              if (!s) continue;
+              const t = new Date(s.year, s.month - 1, s.day);
+              if (t >= today) { target = t; break; }
             }
           }
           if (!target) {
@@ -168,12 +180,11 @@
         };
       }
 
-      // repeat: 今年这一次, 过了就算明年的
-      const m = item.date.split("-");
-      const month = parseInt(m[0], 10) - 1;
-      const day = parseInt(m[1], 10);
-      let d = new Date(now.getFullYear(), month, day);
-      if (d < today) d = new Date(now.getFullYear() + 1, month, day);
+      // repeat: 今年这一次, 过了就算明年的(容错: 误填完整日期时取月-日)
+      const md = parseMD(item.date);
+      if (!md) return null;
+      let d = new Date(now.getFullYear(), md[0] - 1, md[1]);
+      if (d < today) d = new Date(now.getFullYear() + 1, md[0] - 1, md[1]);
       return { target: d, passed: false, days: Math.round((d - today) / 86400000) };
     }
 
@@ -264,12 +275,13 @@
       const rows = CONFIG.anniversaries
         .map((item) => ({ item, r: calc(item) }))
         .filter((x) => x.r && !x.r.skipped);
-      // 与卡片倒计时同口径: 距目标不足 1 天视为"就是今天"
+      // 与卡片倒计时同口径: 目标日 0 点已到(dist<=0)才算"就是今天"，
+      // 否则前一天晚上横幅就提前宣告"就是今天"了
       const dist = (r) => new Date(r.target).getTime() - now;
       const remaining = rows.filter((x) => !x.r.passed);
-      const today = remaining.find((x) => dist(x.r) < 86400000);
+      const today = remaining.find((x) => dist(x.r) <= 0);
       const upcoming = remaining
-        .filter((x) => dist(x.r) >= 86400000)
+        .filter((x) => dist(x.r) > 0)
         .sort((a, b) => dist(a.r) - dist(b.r))[0];
       let html;
       if (today) {
