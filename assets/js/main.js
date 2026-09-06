@@ -137,7 +137,6 @@
       if (document.hidden) { running = false; }
       else if (!running) { running = true; animLoop(frame); }
     });
-
     animLoop(frame);
   }
 
