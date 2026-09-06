@@ -12,7 +12,7 @@
    保护模板同步上去（幂等，重复跑无副作用）
 
 用法：
-    python tools/deploy.py --creds "我的服务器\\love.infinityfreeapp.com服务器\\服务器.txt"
+    python tools/deploy.py --creds "我的服务器\\服务器.txt"
     python tools/deploy.py --creds <文件> --no-build   # 跳过构建（dist 已存在时）
     python tools/deploy.py --creds <文件> --remote htdocs  # 远程基目录（默认自动探测）
 
