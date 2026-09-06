@@ -107,6 +107,7 @@ love_session();
     <section class="tab" data-panel="basic">
       <div class="panel">
         <h2>你们的名字</h2>
+        <p class="desc">⭐ 只改这里即可：生日标题、情书署名、题库选项等所有引用名字的地方会自动同步。</p>
         <div class="grid2">
           <div><label class="f">男生昵称（显示在标题/问候语/署名）</label><input type="text" id="f_names_boy"></div>
           <div><label class="f">女生昵称</label><input type="text" id="f_names_girl"></div>
@@ -114,6 +115,7 @@ love_session();
       </div>
       <div class="panel">
         <h2>重要日期</h2>
+        <p class="desc">⭐ 只改"在一起的日期"即可：相恋100天、相恋一周年、第一次相遇的日期会自动计算（列表里对应项显示为灰色不可改）。</p>
         <div class="grid2">
           <div><label class="f">在一起的日期（startDate）</label><input type="date" id="f_startDate"></div>
           <div><label class="f">解锁页密码（留空 = 直接进入）</label><input type="text" id="f_password" maxlength="20" placeholder="如 520520"></div>
@@ -146,13 +148,13 @@ love_session();
     <section class="tab" data-panel="dates">
       <div class="panel">
         <h2>纪念日列表 anniversaries</h2>
-        <p class="desc">type：once=一次性（过了显示已度过）；repeat=每年都过。农历勾上时 date 写农历月-日（如 3-8，闰月写 闰4-15）</p>
+        <p class="desc">type：once=一次性（过了显示已度过）；repeat=每年都过。农历勾上时 date 写农历月-日（如 3-8，闰月写 闰4-15）。auto 条目（相恋100天/一周年）日期自动计算，灰色不可改。</p>
         <div id="ed_anniversaries"></div>
         <button class="btn ghost add-btn" data-add="anniversaries">＋ 加一个纪念日</button>
       </div>
       <div class="panel">
         <h2>时光轴 timeline</h2>
-        <p class="desc">date 晚于今天的会显示"即将到来"样式</p>
+        <p class="desc">date 晚于今天的会显示"即将到来"样式；auto 条目（第一次相遇/100天/一周年）日期自动计算，灰色不可改。</p>
         <div id="ed_timeline"></div>
         <button class="btn ghost add-btn" data-add="timeline">＋ 加一件大事</button>
       </div>
@@ -178,7 +180,7 @@ love_session();
     <section class="tab" data-panel="quiz">
       <div class="panel">
         <h2>默契问答 quiz（带标准答案）</h2>
-        <p class="desc">a = 正确答案下标（0-3）</p>
+        <p class="desc">a = 正确答案下标（0-3）；选项里的名字会自动跟随"你们的名字"</p>
         <div id="ed_quiz"></div>
         <button class="btn ghost add-btn" data-add="quiz">＋ 加一题</button>
       </div>
@@ -255,7 +257,7 @@ love_session();
       </div>
       <div class="panel">
         <h2>高级：直接编辑 JSON</h2>
-        <p class="desc">不想用表单时，可在此直接改全部配置（与表单实时联动）。修改后点"应用"，再点右下角保存。</p>
+        <p class="desc">不想用表单时，可在此直接改全部配置（与表单实时联动）。修改后点"应用"，再点右下角保存。auto 字段写法："start" / "days100" / "year1"。</p>
         <textarea id="rawJson" rows="14" style="font-family:Consolas,monospace;font-size:12px"></textarea>
         <button class="btn ghost" id="rawApply" style="margin-top:8px">应用 JSON（校验后载入表单）</button>
       </div>
@@ -438,6 +440,7 @@ love_session();
               ctl.appendChild(op);
             });
             ctl.value = esc(row[fd.k]);
+            if (row.auto && fd.k === "type") { ctl.disabled = true; ctl.title = "自动计算：随'在一起的日期'变化"; }
             ctl.addEventListener("change", function () { row[fd.k] = ctl.value; markDirty(); });
           } else if (fd.type === "checkbox") {
             ctl = document.createElement("input");
@@ -451,6 +454,7 @@ love_session();
           } else if (fd.type === "date") {
             ctl = document.createElement("input");
             ctl.type = "date"; ctl.value = esc(row[fd.k]);
+            if (row.auto) { ctl.disabled = true; ctl.title = "自动计算：随'在一起的日期'变化"; }
             ctl.addEventListener("change", function () { row[fd.k] = ctl.value; markDirty(); });
           } else if (fd.type === "opts") {
             // 四个选项输入框
@@ -474,6 +478,7 @@ love_session();
             ctl = document.createElement("input");
             ctl.type = "text"; ctl.value = esc(row[fd.k]);
             if (fd.ph) ctl.placeholder = fd.ph;
+            if (row.auto && (fd.k === "date" || fd.k === "type")) { ctl.disabled = true; ctl.title = "自动计算：随'在一起的日期'变化"; }
             ctl.addEventListener("input", function () { row[fd.k] = ctl.value; markDirty(); });
           }
           if (fd.type !== "opts") cell.appendChild(ctl);
@@ -760,6 +765,7 @@ love_session();
     api("get_config", {}).then(function (j) {
       cfg = deepClone(CONFIG);
       Object.keys(j.overrides || {}).forEach(function (k) { cfg[k] = deepClone(j.overrides[k]); });
+      if (window.__deriveConfig) cfg = window.__deriveConfig(cfg);  // 重新派生: 名字同步 + 日期自动计算
       $("loginView").style.display = "none";
       $("appView").style.display = "block";
       document.querySelector('#tabs button[data-tab="basic"]').click();
