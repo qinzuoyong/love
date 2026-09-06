@@ -1,0 +1,20 @@
+# 构建产物（python tools/build.py 重新生成）
+dist/
+
+# Python
+__pycache__/
+*.pyc
+
+# 操作系统 / 编辑器
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# 个人照片与音乐（隐私 / 体积，不进版本库）
+assets/img/*.jpg
+assets/img/*.jpeg
+assets/img/*.png
+assets/img/*.webp
+assets/music/music.mp3

@@ -1,0 +1,32 @@
+# ============================================================
+# 情侣网站 · Apache 配置示例(.htaccess)
+# 用法: 把 dist/ 目录内容上传到服务器后, 将本文件放到
+#       网站根目录(宝塔 Apache / 虚拟主机均适用)
+# ============================================================
+
+# ---------- gzip 压缩 ----------
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/css
+        application/javascript application/json image/svg+xml
+</IfModule>
+
+# ---------- 缓存策略 ----------
+# 静态资源(带 ?v= 版本号): 30 天缓存, 内容变更版本号自动变
+# HTML: 不缓存, 保证更新即时生效
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/css "access plus 30 days"
+    ExpiresByType application/javascript "access plus 30 days"
+    ExpiresByType image/svg+xml "access plus 30 days"
+    ExpiresByType image/png "access plus 30 days"
+    ExpiresByType image/jpeg "access plus 30 days"
+    ExpiresByType image/webp "access plus 30 days"
+    ExpiresByType text/html "access plus 0 seconds"
+</IfModule>
+
+# ---------- 安全头 ----------
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
