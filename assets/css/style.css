@@ -1175,6 +1175,11 @@ footer .foot-heart {
   animation: heartbeat 1.4s ease-in-out infinite;
 }
 footer .brand-line { margin-bottom: 6px; font-weight: 600; color: var(--ink); }
+footer .music-credit {
+  margin-top: 6px;
+  font-size: 0.76rem;
+  opacity: 0.62;
+}
 
 /* ---------- 主页: 恋爱进度环 + 回忆闪现 ---------- */
 .progress-row {
@@ -1335,7 +1340,7 @@ footer .brand-line { margin-bottom: 6px; font-weight: 600; color: var(--ink); }
 }
 .compat-hist-title {
   font-size: 0.95rem;
-  color: var(--ink);
+  color: var(--rose-deep);
   margin-bottom: 8px;
 }
 .compat-hist-row {

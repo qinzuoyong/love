@@ -1,4 +1,12 @@
-把你们的音乐放到这个目录, 命名为 music.mp3 (如 assets/music/music.mp3),
-刷新网页后会自动优先播放它, 不再使用内置的合成旋律。
+当前曲目: Canon in D Major(卡农钢琴独奏版)
+演奏: Kevin MacLeod(incompetech.com), 2006
+原作: Johann Pachelbel(帕赫贝尔, 约 1680 年, 作曲已属公有领域)
+来源: https://incompetech.com/music/royalty-free/mp3-royaltyfree/Canon%20in%20D%20Major.mp3
+授权: Creative Commons Attribution 4.0(CC BY 4.0, 需署名, 可商用)
+署名文本(已放各页页脚):
+  背景音乐:Canon in D Major — Kevin MacLeod (incompetech.com) · CC BY 4.0
+  许可证: https://creativecommons.org/licenses/by/4.0/
 
-支持格式: mp3 (其他格式如 ogg/aac 也可, 现代浏览器基本都支持)
+更换方法: 把新的 mp3 命名为 music.mp3 放到本目录(覆盖),
+刷新网页后会自动优先播放它, 不再使用内置的合成旋律。
+支持格式: mp3(其他格式如 ogg/aac 也可, 现代浏览器基本都支持)
