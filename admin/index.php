@@ -180,7 +180,7 @@ love_session();
     <section class="tab" data-panel="quiz">
       <div class="panel">
         <h2>默契问答 quiz（带标准答案）</h2>
-        <p class="desc">a = 正确答案下标（0-3）</p>
+        <p class="desc">答案下拉框直接选正确选项（会跟随选项文字实时更新）</p>
         <div id="ed_quiz"></div>
         <button class="btn ghost add-btn" data-add="quiz">＋ 加一题</button>
       </div>
@@ -289,6 +289,13 @@ love_session();
   var dirty = false;
 
   function esc(s) { return String(s == null ? "" : s); }
+  // HTML 转义：拼进 innerHTML 的内容（访客留言/情书/照片说明）必须用它。
+  // esc() 只做 null 兜底，用于 input.value 赋值（那边不能转义）
+  function escHtml(s) {
+    return esc(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
 
   /* ---------------- 基础工具 ---------------- */
   function $(id) { return document.getElementById(id); }
@@ -327,7 +334,7 @@ love_session();
         $("whoLine").textContent = "已登录：" + j.username;
         bootApp();
       })
-      .catch(function (e) { $("lgMsg").innerHTML = '<div class="msg err">' + esc(e.message) + "</div>"; });
+      .catch(function (e) { $("lgMsg").innerHTML = '<div class="msg err">' + escHtml(e.message) + "</div>"; });
   });
   $("lgPass").addEventListener("keydown", function (e) { if (e.key === "Enter") $("lgBtn").click(); });
 
@@ -387,7 +394,7 @@ love_session();
     quiz: [
       { k: "q", label: "题目", type: "text", wide: true },
       { k: "opts", label: "选项", type: "opts" },
-      { k: "a", label: "答案", type: "select", opts: [{ v: "0", t: "选项0" }, { v: "1", t: "选项1" }, { v: "2", t: "选项2" }, { v: "3", t: "选项3" }] },
+      { k: "a", label: "答案", type: "answer" },
     ],
     compatQuiz: [
       { k: "q", label: "题目", type: "text", wide: true },
@@ -447,6 +454,31 @@ love_session();
             ctl.value = esc(row[fd.k]);
             if (row.auto && fd.k === "type") { ctl.disabled = true; ctl.title = "自动计算：随'在一起的日期'变化"; }
             ctl.addEventListener("change", function () { row[fd.k] = ctl.value; markDirty(); });
+          } else if (fd.type === "answer") {
+            // quiz 正确答案下拉：直接显示选项内容（如「1 · 红玫瑰」）。
+            // 值统一存数字下标——select.value 是字符串，直接存会让
+            // 前台 game.js 的 === 严格比较静默判错（点对也判错）
+            ctl = document.createElement("select");
+            var syncAnswer = function () {
+              var opts = (row.opts && row.opts.length) ? row.opts : ["", "", "", ""];
+              var ai = parseInt(row[fd.k], 10);
+              if (isNaN(ai) || ai < 0 || ai >= opts.length) ai = 0;
+              ctl.innerHTML = "";
+              opts.forEach(function (o, oi) {
+                var op = document.createElement("option");
+                op.value = String(oi);
+                op.textContent = (oi + 1) + " · " + (o ? o : "（选项" + (oi + 1) + " 未填）");
+                ctl.appendChild(op);
+              });
+              ctl.value = String(ai);
+              row[fd.k] = ai;   // 旧数据存过字符串的，在此归一为数字
+            };
+            syncAnswer();
+            ctl.addEventListener("change", function () { row[fd.k] = parseInt(ctl.value, 10) || 0; markDirty(); });
+            // 选项文字改动时同步下拉框里的答案文案
+            div.addEventListener("input", function (e) {
+              if (e.target && e.target.closest && e.target.closest(".opts")) syncAnswer();
+            });
           } else if (fd.type === "checkbox") {
             ctl = document.createElement("input");
             ctl.type = "checkbox"; ctl.checked = !!row[fd.k];
@@ -551,6 +583,31 @@ love_session();
   }
   $("saveBtn").addEventListener("click", function () {
     var btn = $("saveBtn");
+    // 保存前校验：startDate 清空/纪念日日期格式错会让前台计时与卡片静默失效
+    var problems = [];
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(cfg.startDate || "")) {
+      problems.push("「在一起的日期」必须选完整日期（清空它会让全站计时和纪念日失效）");
+    }
+    (cfg.anniversaries || []).forEach(function (item) {
+      if (!item) return;
+      var title = item.title || "（未命名纪念日）";
+      var ds = String(item.date || "");
+      if (item.type === "once") {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(ds)) {
+          problems.push("纪念日「" + title + "」是一次性的，日期要填完整日期（如 2024-05-20）");
+        }
+      } else {
+        var md = ds.replace(/^闰/, "").split("-");
+        var mdOk = md.length === 2 && +md[0] >= 1 && +md[0] <= 12 && +md[1] >= 1 && +md[1] <= 31;
+        if (!mdOk) {
+          problems.push("纪念日「" + title + "」是每年都过，日期要填 月-日（如 05-20，农历闰月写 闰4-15）");
+        }
+      }
+    });
+    if (problems.length) {
+      toast("无法保存：" + problems[0] + (problems.length > 1 ? "（还有 " + (problems.length - 1) + " 处问题，逐条修正）" : ""), true);
+      return;
+    }
     btn.disabled = true; btn.textContent = "保存中…";
     api("save_config", { overrides: collectOverrides() })
       .then(function (j) {
@@ -584,16 +641,16 @@ love_session();
       compressImage(file).then(function (dataUrl) {
         return api("photo_upload", { dataUrl: dataUrl, cap: "管理员上传" });
       }).then(function (j) {
-        cfg.gallery = cfg.gallery || [];
-        cfg.gallery.push({ src: j.record.src, cat: "照片", cap: "管理员上传" });
-        markDirty();
+        // 照片已记录进服务器 content.json（与访客上传同一条链路），
+        // 相册页据此显示，在下方"访客上传的照片"里管理/删除。
+        // 不再写进 config.gallery：两路拼接会让相册页同一张显示两次。
       }).catch(function (e) { toast("上传失败：" + e.message, true); }).finally(function () {
         done++;
         $("admPhotoHint").textContent = "上传中 " + done + "/" + files.length + " …";
         if (done === files.length) {
           $("admPhotoHint").textContent = "";
-          buildList("ed_gallery", "gallery", FIELD_DEFS.gallery);
-          toast("照片已上传，记得点右下角保存");
+          loadContent();   // 刷新"访客上传的照片"列表（管理员上传的也在这里）
+          toast("照片已上传，相册页即刻可见");
         }
       });
     });
@@ -646,7 +703,7 @@ love_session();
       var roles = (r.a && r.b) ? r.a.role + " ♥ " + r.b.role : "";
       var tr = document.createElement("tr");
       var td1 = document.createElement("td");
-      td1.innerHTML = stLabel + " <span class='muted'>" + esc(roles) + "</span>";
+      td1.innerHTML = stLabel + " <span class='muted'>" + escHtml(roles) + "</span>";
       if (st === "done" && r.a && r.b) {
         var same = 0, total = r.questions ? r.questions.length : 0;
         for (var i = 0; i < total; i++) if (r.a.answers[i] === r.b.answers[i]) same++;
@@ -683,7 +740,7 @@ love_session();
       img.className = "mini-thumb"; img.src = p.src; img.loading = "lazy";
       td1.appendChild(img);
       var td2 = document.createElement("td");
-      td2.innerHTML = esc(p.cap || "—") + '<div class="muted">' + fmtTs(p.ts) + "</div>";
+      td2.innerHTML = escHtml(p.cap || "—") + '<div class="muted">' + fmtTs(p.ts) + "</div>";
       var td3 = document.createElement("td");
       var del = document.createElement("button");
       del.className = "btn ghost"; del.textContent = "删除";
@@ -709,8 +766,8 @@ love_session();
       var tr = document.createElement("tr");
       var td1 = document.createElement("td");
       td1.innerHTML = kind === "messages"
-        ? "<b>" + esc(r.name) + "</b>：" + esc(r.text)
-        : "<b>" + esc(r.title) + "</b> <span class='muted'>" + esc(r.date) + "</span><br>" + esc(r.sign ? "—— " + r.sign : "");
+        ? "<b>" + escHtml(r.name) + "</b>：" + escHtml(r.text)
+        : "<b>" + escHtml(r.title) + "</b> <span class='muted'>" + escHtml(r.date) + "</span><br>" + escHtml(r.sign ? "—— " + r.sign : "");
       var td2 = document.createElement("td");
       td2.className = "muted"; td2.textContent = fmtTs(r.ts);
       var td3 = document.createElement("td");
