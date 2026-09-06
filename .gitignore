@@ -24,3 +24,8 @@ assets/music/music.mp3
 # assets/img/uploads/ = 上传的照片文件
 data/
 assets/img/uploads/
+
+# 测试脚本(含本机调试用, 不入库)
+tools/_*.py
+tools/_*.js
+tools/_*.json

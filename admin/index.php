@@ -148,13 +148,13 @@ love_session();
     <section class="tab" data-panel="dates">
       <div class="panel">
         <h2>纪念日列表 anniversaries</h2>
-        <p class="desc">type：once=一次性（过了显示已度过）；repeat=每年都过。农历勾上时 date 写农历月-日（如 3-8，闰月写 闰4-15）。auto 条目（相恋100天/一周年）日期自动计算，灰色不可改。</p>
+        <p class="desc">type：once=一次性（过了显示已度过）；repeat=每年都过。农历勾上时 date 写农历月-日（如 3-8，闰月写 闰4-15）</p>
         <div id="ed_anniversaries"></div>
         <button class="btn ghost add-btn" data-add="anniversaries">＋ 加一个纪念日</button>
       </div>
       <div class="panel">
         <h2>时光轴 timeline</h2>
-        <p class="desc">date 晚于今天的会显示"即将到来"样式；auto 条目（第一次相遇/100天/一周年）日期自动计算，灰色不可改。</p>
+        <p class="desc">date 晚于今天的会显示"即将到来"样式</p>
         <div id="ed_timeline"></div>
         <button class="btn ghost add-btn" data-add="timeline">＋ 加一件大事</button>
       </div>
@@ -180,7 +180,7 @@ love_session();
     <section class="tab" data-panel="quiz">
       <div class="panel">
         <h2>默契问答 quiz（带标准答案）</h2>
-        <p class="desc">a = 正确答案下标（0-3）；选项里的名字会自动跟随"你们的名字"</p>
+        <p class="desc">a = 正确答案下标（0-3）</p>
         <div id="ed_quiz"></div>
         <button class="btn ghost add-btn" data-add="quiz">＋ 加一题</button>
       </div>
@@ -227,6 +227,11 @@ love_session();
         <h2>手写情书（服务器存储）</h2>
         <div id="ctLetters"></div>
       </div>
+      <div class="panel">
+        <h2>默契度测试回合（服务器存储）</h2>
+        <p class="desc">双方都答完的回合会进入这里的历史，可查看或删除</p>
+        <div id="ctCompat"></div>
+      </div>
     </section>
 
     <!-- 备份与恢复 -->
@@ -257,7 +262,7 @@ love_session();
       </div>
       <div class="panel">
         <h2>高级：直接编辑 JSON</h2>
-        <p class="desc">不想用表单时，可在此直接改全部配置（与表单实时联动）。修改后点"应用"，再点右下角保存。auto 字段写法："start" / "days100" / "year1"。</p>
+        <p class="desc">不想用表单时，可在此直接改全部配置（与表单实时联动）。修改后点"应用"，再点右下角保存。</p>
         <textarea id="rawJson" rows="14" style="font-family:Consolas,monospace;font-size:12px"></textarea>
         <button class="btn ghost" id="rawApply" style="margin-top:8px">应用 JSON（校验后载入表单）</button>
       </div>
@@ -626,7 +631,43 @@ love_session();
       renderVisitorPhotos(j.data.photos || []);
       renderCT(j.data.messages || [], "ctMessages", "留言", "messages");
       renderCT(j.data.letters || [], "ctLetters", "情书", "letters");
+      renderCompat(j.data.compat || []);
     }).catch(function () { $("visitorPhotos").innerHTML = '<div class="msg err">加载失败</div>'; });
+  }
+  function renderCompat(list) {
+    var box = $("ctCompat");
+    box.innerHTML = "";
+    if (!list.length) { box.innerHTML = '<div class="muted">还没有默契度回合</div>'; return; }
+    var table = document.createElement("table");
+    table.className = "ct";
+    list.slice().reverse().forEach(function (r) {
+      var st = r.status || "";
+      var stLabel = st === "done" ? "✅ 已完成" : st === "waiting_b" ? "⏳ 等第二人" : "✍️ 等第一人";
+      var roles = (r.a && r.b) ? r.a.role + " ♥ " + r.b.role : "";
+      var tr = document.createElement("tr");
+      var td1 = document.createElement("td");
+      td1.innerHTML = stLabel + " <span class='muted'>" + esc(roles) + "</span>";
+      if (st === "done" && r.a && r.b) {
+        var same = 0, total = r.questions ? r.questions.length : 0;
+        for (var i = 0; i < total; i++) if (r.a.answers[i] === r.b.answers[i]) same++;
+        td1.innerHTML += " <b>" + Math.round(same / Math.max(1, total) * 100) + "%</b>";
+      }
+      var td2 = document.createElement("td");
+      td2.className = "muted"; td2.textContent = fmtTs(r.updated || r.created || 0);
+      var td3 = document.createElement("td");
+      var del = document.createElement("button");
+      del.className = "btn ghost"; del.textContent = "删除";
+      del.addEventListener("click", function () {
+        if (!confirm("删除这个默契度回合？")) return;
+        api("content_delete", { kind: "compat", uid: r.id })
+          .then(function () { loadContent(); toast("已删除"); })
+          .catch(function (e) { toast("删除失败：" + e.message, true); });
+      });
+      td3.appendChild(del);
+      tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3);
+      table.appendChild(tr);
+    });
+    box.appendChild(table);
   }
   function renderVisitorPhotos(list) {
     var box = $("visitorPhotos");
