@@ -1,6 +1,8 @@
 /* ============================================================
    情侣网站 · 相册页
    瀑布流照片墙 / 分类筛选 / 灯箱放大(键盘←→、Esc)
+   照片列表 = 配置照片(CONFIG.gallery) + 服务器照片(跨设备共享)
+   + 本机旧照片(服务器不可用时兜底, 成功后自动迁移到服务器)
    ============================================================ */
 
 (function () {
@@ -10,7 +12,8 @@
   const filterBar = document.getElementById("filterBar");
   if (!grid) return;
 
-  const PHOTOS_KEY = "love-photos"; // 网页里添加的照片(本地存储)
+  const PHOTOS_KEY = "love-photos"; // 网页里添加的照片（本机兜底/旧数据迁移源）
+  const S = window.loveServer;
 
   function readLSP(key, fallback) {
     try { return JSON.parse(localStorage.getItem(key)) || fallback; }
@@ -21,10 +24,14 @@
     catch (e) { return false; }
   }
 
-  /* 照片列表 = 配置照片 + 本地添加的照片 */
-  let photos = (CONFIG.gallery || []).concat(readLSP(PHOTOS_KEY, []).map((p) => ({
-    src: p.src, cat: "照片", cap: p.cap || "我们的新照片", local: true, uid: p.uid,
-  })));
+  function localPhotos() {
+    return readLSP(PHOTOS_KEY, []).map((p) => ({
+      src: p.src, cat: "照片", cap: p.cap || "我们的新照片", local: true, uid: p.uid,
+    }));
+  }
+
+  /* 照片列表 = 配置照片 + 本机旧照片（服务器照片稍后异步并入） */
+  let photos = (CONFIG.gallery || []).concat(localPhotos());
   let currentCat = "全部";
   let currentList = [];
   let currentIndex = 0;
@@ -55,9 +62,10 @@
       const item = document.createElement("figure");
       item.className = "photo reveal";
       item.style.transitionDelay = (i % 6) * 60 + "ms";
+      const showDel = p.local || (p.server && p.mine);
       item.innerHTML =
         '<img src="' + p.src + '" alt="' + (p.cap || "") + '" loading="lazy">' +
-        (p.local ? '<button class="photo-del" data-uid="' + p.uid + '" aria-label="删除照片">✕</button>' : "") +
+        (showDel ? '<button class="photo-del" data-uid="' + p.uid + '" aria-label="删除照片">✕</button>' : "") +
         '<figcaption class="cap">' + (p.cap || "") + "</figcaption>";
       item.addEventListener("click", (e) => {
         if (e.target.classList.contains("photo-del")) return; // 删除按钮不打开灯箱
@@ -70,28 +78,37 @@
     if (window.revealNow) window.revealNow();
   }
 
-  /* ---------- 删除本地照片(事件委托) ---------- */
+  /* ---------- 删除照片（本机直接删；服务器照片只能删自己的） ---------- */
   grid.addEventListener("click", (e) => {
     const del = e.target.closest(".photo-del");
     if (!del) return;
     e.stopPropagation();
     const uid = del.dataset.uid;
-    const list = readLSP(PHOTOS_KEY, []);
-    const idx = list.findIndex((p) => p.uid === uid);
-    if (idx === -1) return;
-    if (window.confirm("删除这张照片吗？")) {
-      list.splice(idx, 1);
-      writeLSP(PHOTOS_KEY, list);
-      photos = (CONFIG.gallery || []).concat(list.map((p) => ({
-        src: p.src, cat: "照片", cap: p.cap || "我们的新照片", local: true, uid: p.uid,
-      })));
+    const p = photos.find((x) => x.uid === uid);
+    if (!p) return;
+    if (!window.confirm("删除这张照片吗？")) return;
+
+    if (p.local) {
+      const list = readLSP(PHOTOS_KEY, []);
+      const idx = list.findIndex((x) => x.uid === uid);
+      if (idx !== -1) { list.splice(idx, 1); writeLSP(PHOTOS_KEY, list); }
+      photos = photos.filter((x) => x.uid !== uid);
       rebuildCats();
       render();
       if (window.toast) window.toast("已删除");
+    } else if (p.server && p.mine && S) {
+      S.post({ action: "delete", kind: "photos", uid: uid, deviceId: S.deviceId })
+        .then(() => {
+          photos = photos.filter((x) => x.uid !== uid);
+          rebuildCats();
+          render();
+          if (window.toast) window.toast("已删除");
+        })
+        .catch((err) => { if (window.toast) window.toast("删除失败：" + err.message); });
     }
   });
 
-  /* ---------- 添加照片(压缩后存本地) ---------- */
+  /* ---------- 添加照片（优先上传服务器, 失败存本机兜底） ---------- */
   const addBtn = document.getElementById("addPhotoBtn");
   const photoInput = document.getElementById("photoInput");
   if (addBtn && photoInput) {
@@ -106,17 +123,31 @@
         return;
       }
       compressImage(file).then((dataUrl) => {
-        const list = readLSP(PHOTOS_KEY, []);
-        const item = { src: dataUrl, cap: "刚刚添加的照片", uid: "p" + Date.now() + Math.floor(Math.random() * 1000) };
-        list.push(item);
-        if (!writeLSP(PHOTOS_KEY, list)) {
-          if (window.toast) window.toast("本地存储空间不足，试试小一点的图片");
-          return;
-        }
-        photos.push({ src: item.src, cat: "照片", cap: item.cap, local: true, uid: item.uid });
-        rebuildCats();
-        render();
-        if (window.toast) window.toast("照片已添加 💕");
+        const uid = "p" + Date.now() + Math.floor(Math.random() * 1000);
+        const item = { src: dataUrl, cap: "刚刚添加的照片", uid: uid };
+
+        const pushLocal = () => {
+          const list = readLSP(PHOTOS_KEY, []);
+          list.push(item);
+          if (!writeLSP(PHOTOS_KEY, list)) {
+            if (window.toast) window.toast("本机存储空间不足，试试小一点的图片");
+            return;
+          }
+          photos.push({ src: item.src, cat: "照片", cap: item.cap, local: true, uid: item.uid });
+          rebuildCats();
+          render();
+          if (window.toast) window.toast("已存到本机（服务器暂不可用）");
+        };
+
+        if (!S) { pushLocal(); return; }
+        S.post({ action: "photo_add", dataUrl: dataUrl, cap: item.cap, uid: uid, deviceId: S.deviceId })
+          .then((j) => {
+            photos.push({ src: j.record.src, cat: "照片", cap: j.record.cap || item.cap, server: true, mine: true, uid: j.record.uid });
+            rebuildCats();
+            render();
+            if (window.toast) window.toast("照片已上传到服务器 💕");
+          })
+          .catch(() => pushLocal());
       }).catch(() => {
         if (window.toast) window.toast("图片读取失败，换一张试试");
       });
@@ -150,6 +181,37 @@
       });
     }
   }
+
+  /* ---------- 服务器同步：迁移本机旧照片 → 拉取服务器照片 ---------- */
+  (function syncServer() {
+    if (!S) return;
+    const locals = readLSP(PHOTOS_KEY, []);
+    let chain = Promise.resolve();
+    locals.forEach((item) => {
+      chain = chain.then(() =>
+        S.post({ action: "photo_add", dataUrl: item.src, cap: item.cap, uid: item.uid, deviceId: S.deviceId })
+          .then(() => {
+            // 迁移成功 → 从本机移除（uid 相同服务器会去重，重复打开不会传两遍）
+            const list = readLSP(PHOTOS_KEY, []);
+            const i = list.findIndex((x) => x.uid === item.uid);
+            if (i !== -1) { list.splice(i, 1); writeLSP(PHOTOS_KEY, list); }
+          })
+          .catch(() => {})
+      );
+    });
+    chain
+      .then(() => S.fetchAll())
+      .then((data) => {
+        const extras = (data.photos || []).map((p) => ({
+          src: p.src, cat: "照片", cap: p.cap || "我们的新照片",
+          server: true, mine: p.deviceId === S.deviceId, uid: p.uid,
+        }));
+        photos = (CONFIG.gallery || []).concat(extras).concat(localPhotos());
+        rebuildCats();
+        render();
+      })
+      .catch(() => { /* 服务器不可用：保持本机数据 */ });
+  })();
 
   /* ---------- 灯箱 ---------- */
   const lb = document.getElementById("lightbox");

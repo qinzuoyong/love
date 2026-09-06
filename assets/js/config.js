@@ -1,11 +1,15 @@
 /* ============================================================
-   情侣网站 · 唯一配置文件
+   情侣网站 · 默认配置（唯一配置文件）
    ------------------------------------------------------------
-   整个网站的“名字、日期、照片、文案”都在这里修改，
-   改完刷新页面即可生效，无需动其他任何文件。
+   这里是"默认值"。管理员后台（/admin/）修改的内容会存在
+   服务器 data/config.json，并通过 api/config.php 在页面加载时
+   自动覆盖这里的默认值 —— 所以改配置请用后台，更新网站
+   （上传覆盖文件）永远不会丢失后台改过的内容。
+
+   手动改这里仍然有效（作为默认值），只是会被后台覆盖。
    ============================================================ */
 
-const CONFIG = {
+const DEFAULT_CONFIG = {
   /* ---------- 你们的名字 ----------
      ★★★ 把"待定A / 待定B"改成你们的真名/昵称 ★★★
      全站所有显示（导航、主页标题、问候语、页面标题…）都会跟着变 */
@@ -182,3 +186,26 @@ const CONFIG = {
     "如果给我准备一个惊喜，会是什么？",
   ],
 };
+
+/* ============================================================
+   服务器自定义覆盖合并
+   ------------------------------------------------------------
+   api/config.php 会在本文件之前注入 window.__SERVER_OVERRIDES__，
+   内容是管理员后台保存的修改（存在服务器 data/config.json）。
+   合并规则：对象按 key 递归覆盖，数组整体替换。
+   本地开发没有 PHP 时不会注入，直接用默认配置。
+   ============================================================ */
+window.DEFAULT_CONFIG = DEFAULT_CONFIG;
+
+function __mergeConfig(base, over) {
+  if (over === null || over === undefined) return base;
+  if (Array.isArray(base) || Array.isArray(over)) return over;
+  if (typeof base === "object" && typeof over === "object") {
+    var out = {};
+    for (var k in base) out[k] = __mergeConfig(base[k], over[k]);
+    return out;
+  }
+  return over;
+}
+
+const CONFIG = __mergeConfig(DEFAULT_CONFIG, window.__SERVER_OVERRIDES__ || null);
