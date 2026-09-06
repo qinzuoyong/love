@@ -18,3 +18,9 @@ assets/img/*.jpeg
 assets/img/*.png
 assets/img/*.webp
 assets/music/music.mp3
+
+# 管理员后台运行时数据（只存在于服务器，绝不上传/入库）
+# data/ = 配置、留言、情书、照片记录、管理员账号
+# assets/img/uploads/ = 上传的照片文件
+data/
+assets/img/uploads/
