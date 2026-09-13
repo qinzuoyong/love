@@ -7,6 +7,9 @@
 (function () {
   "use strict";
 
+  // 配置文案由管理员写入，拼 innerHTML 前必须转义
+  const esc = window.escHtml || ((v) => String(v === null || v === undefined ? "" : v));
+
   const START = new Date(CONFIG.startDate + "T00:00:00");
   if (isNaN(START)) return;
 
@@ -47,6 +50,12 @@
     }
     tick();
     setInterval(tick, 1000);
+    /* 兜底：首帧是同步跑的，若本文件排在 lunar.js / main.js 之前，那一刻
+       window.Lunar 与 window.launchFireworks 都还没定义 —— 农历生日会退化成
+       按公历月-日匹配（默认配置里那条农历生日会在公历 3-8 误报庆祝），烟花也
+       不会放；而 checkToday 只在"天数变化"时重跑，整页都不会自愈。
+       加载完成后再判一次，让结果与脚本顺序解耦。 */
+    window.addEventListener("load", checkToday);
   }
 
   /* 解析 repeat 型纪念日日期(月-日)；容错误填的完整日期（"2024-05-20"→5月20日） */
@@ -58,6 +67,20 @@
     if (!m || !d || m < 1 || m > 12 || d < 1 || d > 31) return null;
     return [m, d];
   }
+
+  /* 平年没有 2 月 29 日：new Date(平年, 1, 29) 会静默滚成 3 月 1 日，卡片
+     显示"还有 N 天"指向 3-01、当天还报"🎉 就是今天!"（错日）。口径与
+     calendar.js 的 .ics 导出一致（BYMONTHDAY=29 平年不触发）：
+     2-29 的下一次出现直接跳到下一个闰年。 */
+  function isLeap(y) { return (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0; }
+  function nextOccurrence(y, md) {
+    let yy = y;
+    if (md[0] === 2 && md[1] === 29 && !isLeap(yy)) {
+      do { yy++; } while (!isLeap(yy));
+    }
+    return new Date(yy, md[0] - 1, md[1]);
+  }
+  window.__loveNextRepeatOccurrence = nextOccurrence;   // 供 _test_anniv_next.js 直接断言
 
   /* ---------- 今日特殊日(主页横幅): 生日/纪念日当天自动庆祝 ---------- */
   function checkToday() {
@@ -94,8 +117,8 @@
     });
 
     if (found.length) {
-      const icons = found.map((f) => f.icon).join(" ");
-      const titles = found.map((f) => f.title).join("、");
+      const icons = found.map((f) => esc(f.icon)).join(" ");
+      const titles = found.map((f) => esc(f.title)).join("、");
       el.style.display = "flex";
       el.innerHTML = icons + ' 今天是 <b>' + titles + "</b>！好好庆祝吧 " + icons;
       // 特殊日放烟花庆祝(每页会话只放一次)
@@ -150,7 +173,9 @@
           // 今年闰月已过的必须跳过，否则卡片会整年停在"就是今天"
           for (let y = nowLunar.year; y <= nowLunar.year + 8; y++) {
             if (Lunar.leapMonth(y) === lm) {
-              const s = Lunar.toSolar(y, lm, ld, true);
+              const md = Lunar.monthDays ? Lunar.monthDays(y, lm, true) : 0;
+              const day = md > 0 ? Math.min(ld, md) : ld;   // 该月只有 29 天时把"三十"夹到廿九
+              const s = Lunar.toSolar(y, lm, day, true);
               if (!s) continue;
               const t = new Date(s.year, s.month - 1, s.day);
               if (t >= today) { target = t; break; }
@@ -164,11 +189,16 @@
             };
           }
         } else {
-          const s1 = Lunar.toSolar(nowLunar.year, lm, ld, false);
+          // 农历"三十"在该月只有 29 天时会落到下月初一，这里夹到该月最后一天
+          const clampDay = (y) => {
+            const md = Lunar.monthDays ? Lunar.monthDays(y, lm, false) : 0;
+            return md > 0 ? Math.min(ld, md) : ld;
+          };
+          const s1 = Lunar.toSolar(nowLunar.year, lm, clampDay(nowLunar.year), false);
           if (!s1) return null;
           target = new Date(s1.year, s1.month - 1, s1.day);
           if (target < today) { // 已过 → 下一农历年
-            const s2 = Lunar.toSolar(nowLunar.year + 1, lm, ld, false);
+            const s2 = Lunar.toSolar(nowLunar.year + 1, lm, clampDay(nowLunar.year + 1), false);
             if (s2) target = new Date(s2.year, s2.month - 1, s2.day);
           }
         }
@@ -183,8 +213,8 @@
       // repeat: 今年这一次, 过了就算明年的(容错: 误填完整日期时取月-日)
       const md = parseMD(item.date);
       if (!md) return null;
-      let d = new Date(now.getFullYear(), md[0] - 1, md[1]);
-      if (d < today) d = new Date(now.getFullYear() + 1, md[0] - 1, md[1]);
+      let d = nextOccurrence(now.getFullYear(), md);
+      if (d < today) d = nextOccurrence(now.getFullYear() + 1, md);
       return { target: d, passed: false, days: Math.round((d - today) / 86400000) };
     }
 
@@ -216,21 +246,29 @@
         }
 
         // 日期行: 农历条目显示农历写法 + 换算出的当年公历日期
-        let dateHtml = item.date;
+        let dateHtml = esc(item.date);
         if (r.lunar) {
           dateHtml =
             '<span class="lunar-badge">农历</span>' +
-            r.lunarLabel +
+            esc(r.lunarLabel) +
             (r.skipped
               ? " · 今年无此闰月"
-              : ' · 今年 <span class="lunar-solar">' + fmtSolar(r.target) + "</span>");
+              : ' · 下次 <span class="lunar-solar">' + esc(fmtSolar(r.target)) + "</span>");
         }
 
         card.innerHTML =
-          '<div class="icon">' + item.icon + "</div>" +
-          "<h3>" + item.title + "</h3>" +
+          '<div class="icon">' + esc(item.icon) + "</div>" +
+          "<h3>" + esc(item.title) + "</h3>" +
           '<div class="date">' + dateHtml + "</div>";
         card.appendChild(countEl);
+
+        // 「加入日历」按钮：点击由 calendar.js 的事件委托处理（生成 .ics 下载）
+        const icsBtn = document.createElement("button");
+        icsBtn.type = "button";
+        icsBtn.className = "btn btn-ghost anniv-ics";
+        icsBtn.setAttribute("data-anniv-add", String(i));
+        icsBtn.textContent = "📅 加入日历";
+        card.appendChild(icsBtn);
 
         grid.appendChild(card);
       });
@@ -239,8 +277,18 @@
     }
 
     // 每秒刷新所有倒计时
+    let lastYmd = "";
     function tickAll() {
       const now = new Date();
+      const ymd = now.getFullYear() + "-" + now.getMonth() + "-" + now.getDate();
+      if (lastYmd && ymd !== lastYmd) {
+        // 跨天：卡片目标日、总天数、"下一个纪念日"都必须重算，
+        // 否则纪念日当天过后会永远停在"🎉 就是今天!"
+        render();
+        renderNext();
+        if (totalEl) totalEl.textContent = Math.floor((Date.now() - START) / 86400000);
+      }
+      lastYmd = ymd;
       document.querySelectorAll(".anniv-count").forEach((el) => {
         if (el.dataset.passedOnce === "1") {
           el.innerHTML = '<span style="color:#9a7b8a;font-size:0.95rem">已度过 这一天</span>';
@@ -285,12 +333,17 @@
         .sort((a, b) => dist(a.r) - dist(b.r))[0];
       let html;
       if (today) {
-        html = '<span class="n-icon">🎉</span> <b>' + today.item.title + "</b> 就是今天！好好庆祝吧";
+        html = '<span class="n-icon">🎉</span> <b>' + esc(today.item.title) + "</b> 就是今天！好好庆祝吧";
         // 纪念日当天放烟花庆祝(每页会话只放一次)
         if (window.launchFireworks) setTimeout(window.launchFireworks, 300);
       } else if (upcoming) {
-        const d = Math.floor(dist(upcoming.r) / 86400000);
-        html = '<span class="n-icon">💐</span> 下一个纪念日：<b>' + upcoming.item.title + "</b> · 还有 <b>" + d + "</b> 天";
+        /* 与卡片同口径：按"两个零点之间"算整天数。直接对 now 取 floor 的话，
+           纪念日前一整天 dist 都 < 24 小时 → 横幅显示"还有 0 天"，而卡片写的是
+           "还有 1 天"，同一天两个数字打架。 */
+        const target0 = new Date(upcoming.r.target).setHours(0, 0, 0, 0);
+        const today0 = new Date(now).setHours(0, 0, 0, 0);
+        const d = Math.round((target0 - today0) / 86400000);
+        html = '<span class="n-icon">💐</span> 下一个纪念日：<b>' + esc(upcoming.item.title) + "</b> · 还有 <b>" + d + "</b> 天";
       } else {
         html = "所有纪念日都已度过，去创造新的吧 💕";
       }

@@ -1,19 +1,40 @@
-当前曲目: Canon in D Major(卡农钢琴独奏版 · 精华 60 秒循环)
-演奏: Kevin MacLeod(incompetech.com), 2006
-原作: Johann Pachelbel(帕赫贝尔, 约 1680 年, 作曲已属公有领域)
-来源: https://incompetech.com/music/royalty-free/mp3-royaltyfree/Canon%20in%20D%20Major.mp3
-授权: Creative Commons Attribution 4.0(CC BY 4.0, 需署名, 可商用)
-署名文本(已放各页页脚):
-  背景音乐:Canon in D Major — Kevin MacLeod (incompetech.com) · CC BY 4.0
-  许可证: https://creativecommons.org/licenses/by/4.0/
+当前曲目: 从你们自己的音频文件转码而来(不入版本库、不在此记录曲名与来源)。
+参数: 整曲不裁剪, 44.1kHz 单声道 64kbps, 约 1.0MB, 循环播放。
 
-制作说明: 从原曲 40s 处截取 60 秒精华段, 转码 48kbps 单声道(360KB),
-原因: InfinityFree 免费主机对大文件响应极慢(实测 ~7-13KB/s),
-整曲 5.9MB 需要 7 分钟以上才缓冲完, 点播放会长时间无声;
-360KB 在慢链路约 30-50 秒、正常网络秒开, 循环播放不显短。
+为什么文件叫 music.dat 而不是 music.mp3:
+  InfinityFree 边缘层按【扩展名】给音频强加 Cache-Control: no-store(2026-09-13
+  同字节探针实测: _probe.mp3 被补 no-store, _probe.dat 拿到 max-age=2592000 public)。
+  no-store 意味着浏览器每次翻页都要重新下载音乐(实测每次约 40KB、出声等 2-4 秒);
+  改成无音频语义的 .dat 后浏览器正常缓存 30 天, 翻页零下载、秒出声,
+  且浏览器照样把它当音频解码(媒体加载不看 Content-Type)。
+  ⚠️ 千万不要在 .htaccess 里给 .dat 加 AddType audio/mpeg —— 会被边缘层
+     重新识别成音频, no-store 又会回来。
 
-更换方法: 把新的 mp3 命名为 music.mp3 放到本目录(覆盖),
+为什么码率压到 64k 单声道: InfinityFree 免费主机对本站的实测带宽只有
+7-13KB/s(约 56-104kbps)。码率高于链路带宽时, 浏览器边下边播会卡顿;
+64kbps 约需 8KB/s, 留有余量。首次访问边下边播(出声只等开头几秒),
+整首会在播放过程中慢慢进浏览器缓存, 之后翻页/再访全走本地缓存。
+
+更换方法: 把新的音频命名为 music.dat 放到本目录(覆盖),
 刷新网页后会自动优先播放它, 不再使用内置的合成旋律。
-建议控制在 500KB 以内(服务器慢链路), 可用 ffmpeg 裁剪转码:
-  ffmpeg -i 源文件.mp3 -ss 起始秒 -t 时长秒 -b:a 48k -ac 1 music.mp3
-支持格式: mp3(其他格式如 ogg/aac 也可, 现代浏览器基本都支持)
+转码建议(ffmpeg):
+
+  ffmpeg -i 源文件.mp3 -vn -b:a 64k -ac 1 -ar 44100 -map_metadata -1 music.dat
+
+  -b:a 码率(想更省流量可降到 48k) / -ac 1 单声道 / -vn 丢掉内嵌封面,
+  -map_metadata -1 剥掉 ID3 标签(避免把来源信息写进公开文件)。
+
+注意: 本文件被 tools/deploy.py 列为保护内容(PROTECTED_EXACT), 部署时永不覆盖;
+要更新线上音乐请单独跑 python tools/_upload_music.py --creds <凭据文件>。
+
+⚠️ 换曲时必须同时把 assets/js/main.js 里的 MUSIC_URL 版本号加一
+   (现在是 assets/music/music.dat?v=1)。音频的 30 天缓存靠 Cache-Control
+   max-age 保证, 而音频不像 css/js 那样被 build.py 自动打版本号 ——
+   不手动加一, 浏览器最久 30 天都在放缓存里的旧曲子。
+
+历史备注: 线上还留着旧的 assets/music/music.mp3(内容同曲, 依旧被 no-store)。
+页面与 JS 有 30 天浏览器缓存, 之前来访过的访客可能还在用旧 JS 引用 music.mp3
+—— 保留它到 2026-10-13 之后才可以从服务器删除。
+
+历史署名(公开仓库用): 本仓库历史版本曾内置 Canon in D (Kevin MacLeod, CC BY 4.0)
+作为背景音乐, 该音频文件已不在仓库中。
