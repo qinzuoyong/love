@@ -2,12 +2,18 @@
 # 情侣网站 · Apache 配置示例(.htaccess)
 # 用法: 把 dist/ 目录内容上传到服务器后, 将本文件放到
 #       网站根目录(宝塔 Apache / 虚拟主机均适用)
+# 部署: 本文件由 tools/deploy.py 的 EXTRA_FILES 清单**每次部署都会上传**
+#       （映射到网站根目录 .htaccess），不需要手工传；改完跑一次 deploy 即可，
+#       再用 tools/_verify_remote.py 回读 sha256 确认字节一致。
 # ============================================================
 
 # ---------- gzip 压缩 ----------
-<IfModule mod_deflate.c>
-    AddOutputFilterByType DEFLATE text/html text/css
-        application/javascript application/json image/svg+xml
+# 注意：Apache 指令必须一行写完（换行会被当成新指令 → 500），
+# 且 AddOutputFilterByType 属于 mod_filter，需要同时判断 mod_filter
+<IfModule mod_filter.c>
+    <IfModule mod_deflate.c>
+        AddOutputFilterByType DEFLATE text/html text/css application/javascript application/json image/svg+xml
+    </IfModule>
 </IfModule>
 
 # ---------- 缓存策略 ----------
@@ -22,11 +28,72 @@
     ExpiresByType image/jpeg "access plus 30 days"
     ExpiresByType image/webp "access plus 30 days"
     ExpiresByType text/html "access plus 0 seconds"
+    # 音频缓存：这里写不写都一样 —— 主机边缘层(openresty)按【扩展名】给音频
+    #  无条件追加 "no-store, must-revalidate, max-age=0, proxy-revalidate, no-transform"
+    #   （2026-09-12 实测：Expires / Expires+显式 Cache-Control / AddType
+    #    application/octet-stream .mp3 三种写法都被追加，第三种还会让
+    #    ExpiresByType audio/mpeg 失效、反而更差）。
+    # ✔ 已于 2026-09-13 用「改名」解决（本地提交 63ad3f7）：同字节探针对比实证
+    #   主机按扩展名识别——文件叫 .mp3 被禁缓存，叫 music.dat 就拿到正常的
+    #   30 天缓存（Cache-Control: max-age=2592000, public），且浏览器照样把它
+    #   当音频解码。现役音频文件是 assets/music/music.dat（MUSIC_URL 带 ?v=1）。
+    #   ⚠️ 千万不要给 .dat 加 AddType audio/mpeg —— 边缘层会重新把它识别成
+    #      音频，no-store 就回来了。
+    #   旧 assets/music/music.mp3 保留在服务器上（本清单的 audio/* 头留着给它），
+    #   供仍持有 30 天页面缓存的旧访客使用，2026-10-13 之后才可从服务器删除。
+    ExpiresByType audio/mpeg "access plus 30 days"
+    ExpiresByType audio/mp4 "access plus 30 days"
+    ExpiresByType audio/ogg "access plus 30 days"
 </IfModule>
 
 # ---------- 安全头 ----------
+# X-Robots-Tag 用 always：非 2xx（401/403/404）也带上，防止"被拦住但留下链接"。
+# 注意：不要同时在 robots.txt 里写 Disallow: /，否则爬虫读不到这个头（见 robots.txt 注释）。
 <IfModule mod_headers.c>
+    Header always set X-Robots-Tag "noindex, nofollow, noarchive"
     Header set X-Content-Type-Options "nosniff"
     Header set X-Frame-Options "SAMEORIGIN"
     Header set Referrer-Policy "strict-origin-when-cross-origin"
+
+    # HSTS：让浏览器在本地就把 http 改写成 https —— 装好之后连明文请求都不再发出。
+    # max-age 故意先给 1 天（渐进上线）：它是一把"浏览器里没有绕过按钮"的锁，万一主机
+    # 证书失效/过期，站点在 max-age 到期前会直接打不开，而用户无法点击继续访问。
+    # 稳定运行一段时间后再调大（改成 31536000）；要撤销就在 https 响应里下发 max-age=0。
+    # 不加 includeSubDomains / preload：本站是免费主机的子域，没必要扩大影响面。
+    # 只有 https 响应里的这一行才会被浏览器采纳（http 响应里的会被忽略），这里用 always
+    # 是为了连 401/403 这类响应也带上。
+    Header always set Strict-Transport-Security "max-age=86400"
+</IfModule>
+
+# ---------- 图片直链保护 ----------
+# 照片只允许通过根目录 photo.php 代理读取（需要解锁 Cookie）。
+# ⚠️ 这一段依赖 photo.php 存在（PHP 环境）。纯静态托管（无 PHP）请删掉它，
+#    否则 assets/img/ 下的 jpg/png/webp/gif 会全部 403。
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # ---------- 强制 https ----------
+    # 解锁凭证/会话凭证都是 Secure Cookie：http 页面既读不到、也无权改写它们，
+    # 所以"先在 https 解锁、之后用 http 打开"会永久被弹回锁页（2026-09-12 实测复现）。
+    # 这里在服务器层把 http 全部 301 到 https，从入口消灭 http/https 混用。
+    # 为什么同时判两个条件：免费主机的 TLS 可能在边缘终止，源站看到的信号不一定可靠；
+    # 两个条件都要求"不是 https"才跳，只要任一信号表示 https 就放行，避免
+    # "https 请求又被当成 http 再跳一次"的无限回环。已实测本主机能正确区分两种协议
+    # （同一段 PHP 在 http 下判定 false、https 下判定 true）。
+    # 替换串不含 ?，所以原查询串（如主机防护的 ?i=1）会被自动保留。
+    RewriteCond %{HTTPS} !=on
+    RewriteCond %{HTTP:X-Forwarded-Proto} !=https
+    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+
+    # 图片直链保护：照片只允许通过根目录 photo.php 代理读取（需要解锁 Cookie）。
+    # 放在强制 https 之后：http 的图片请求先被跳到 https，而不是先被判 403。
+    # ⚠️ 这一段依赖 photo.php 存在（PHP 环境）。纯静态托管（无 PHP）请删掉它，
+    #    否则 assets/img/ 下的 jpg/png/webp/gif 会全部 403。
+    RewriteRule ^assets/img/[^/]+\.(?:jpe?g|png|webp|gif)$ - [F,L,NC]
+</IfModule>
+
+# ---------- .ics 日历文件类型（纪念日导出用，可选） ----------
+<IfModule mod_mime.c>
+    AddType text/calendar .ics
+    AddCharset UTF-8 .ics
 </IfModule>
