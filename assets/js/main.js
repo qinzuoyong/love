@@ -13,11 +13,43 @@
   });
   const heroNames = document.getElementById("heroNames");
   if (heroNames) {
+    const esc = window.escHtml || ((v) => String(v === null || v === undefined ? "" : v));
     heroNames.innerHTML =
-      CONFIG.names.boy + ' <span class="amp">♥</span> ' + CONFIG.names.girl;
+      esc(CONFIG.names.boy) + ' <span class="amp">♥</span> ' + esc(CONFIG.names.girl);
   }
   // 浏览器标签页标题带上名字(便于多标签识别, 改名后自动跟着变)
   document.title = CONFIG.names.boy + " ♥ " + CONFIG.names.girl + " · " + document.title;
+
+  /* ---------- 无障碍：跟随系统的"减弱动态效果" ----------
+     开了就停掉飘心/光标爱心这类持续动画，打字机直接出全文（见各页脚本）。 */
+  const reduceMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  window.__loveReduceMotion = reduceMotion;
+
+  /* ---------- 高分屏适配 ----------
+     给 canvas 设 width/height 时乘上 devicePixelRatio，并用 setTransform 把
+     绘制坐标系还原成 CSS 像素 —— 这样脚本里继续按 innerWidth/innerHeight
+     书写坐标即可，而在 DPR>1 的手机上不再发虚。
+     注意：给 canvas.width 赋值会重置 2D 上下文状态，所以每次都要重新设变换。 */
+  function fitCanvas(canvas, w, h) {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);   // 上限 2：再高只是徒增开销
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    canvas.style.width = w + "px";
+    canvas.style.height = h + "px";
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return ctx;
+  }
+  window.loveFitCanvas = fitCanvas;
+
+  /* ---------- 顶部滚动进度条（transform: scaleX，走合成层） ---------- */
+  let scrollBar = null;
+  if (!reduceMotion) {
+    scrollBar = document.createElement("div");
+    scrollBar.className = "scroll-bar";
+    scrollBar.setAttribute("aria-hidden", "true");
+    document.body.appendChild(scrollBar);
+  }
 
   /* ---------- 导航: 滚动阴影 / 高亮当前页 / 移动端菜单 ---------- */
   const nav = document.getElementById("nav");
@@ -26,6 +58,11 @@
   function onScroll() {
     if (nav) nav.classList.toggle("scrolled", window.scrollY > 8);
     if (topBtn) topBtn.classList.toggle("show", window.scrollY > 420);
+    if (scrollBar) {
+      const max = document.documentElement.scrollHeight - window.innerHeight;
+      const p = max > 0 ? Math.min(1, Math.max(0, window.scrollY / max)) : 0;
+      scrollBar.style.transform = "scaleX(" + p + ")";
+    }
   }
   window.addEventListener("scroll", onScroll, { passive: true });
   onScroll();
@@ -82,13 +119,14 @@
     let W, H, hearts = [], running = true;
 
     function resize() {
-      W = canvas.width = window.innerWidth;
-      H = canvas.height = window.innerHeight;
+      W = window.innerWidth;
+      H = window.innerHeight;
+      fitCanvas(canvas, W, H);
     }
     resize();
     window.addEventListener("resize", resize);
 
-    const MAX = window.innerWidth < 640 ? 14 : 22;
+    const MAX = reduceMotion ? 0 : (window.innerWidth < 640 ? 14 : 22);
     function spawn(force) {
       if (hearts.length < MAX && (force || Math.random() < 0.06)) {
         hearts.push({
@@ -104,9 +142,12 @@
       }
     }
 
-    function drawHeart(x, y, r, t, hue, alpha) {
+    /* phase 用每颗心自己的随机相位：早先这里读的是全局 heart_phase（其实存的是
+       帧时间戳），于是变成 sin(ts*0.001 + ts) —— 每帧都在跳，视觉上是左右高频
+       抖动；而 spawn() 里生成的 h.phase 从来没被读过。 */
+    function drawHeart(x, y, r, t, hue, alpha, phase) {
       ctx.save();
-      ctx.translate(x + Math.sin(t * 0.001 + heart_phase) * 14, y);
+      ctx.translate(x + Math.sin(t * 0.001 + phase) * 14, y);
       ctx.globalAlpha = alpha;
       ctx.fillStyle = "hsl(" + hue + ", 75%, 78%)";
       ctx.beginPath();
@@ -117,16 +158,14 @@
       ctx.restore();
     }
 
-    let heart_phase = 0;
     function frame(ts) {
       if (!running) return;
-      heart_phase = ts;
       ctx.clearRect(0, 0, W, H);
       spawn(false);
       hearts = hearts.filter((h) => h.y > -60);
       hearts.forEach((h) => {
         h.y -= h.vy;
-        drawHeart(h.x, h.y, h.r, ts, h.hue, h.alpha);
+        drawHeart(h.x, h.y, h.r, ts, h.hue, h.alpha, h.phase);
       });
       animLoop(frame);
     }
@@ -141,8 +180,8 @@
   }
 
   /* ---------- 音乐盒(WebAudio 合成, 无需音频文件) ----------
-     默认播放一段轻音乐盒旋律; 若存在 assets/music/music.mp3
-     则优先播放你的专属音乐(把 mp3 放进 assets/music/ 即可) */
+     默认播放一段轻音乐盒旋律; 若存在 assets/music/music.dat
+     则优先播放你的专属音乐(把音频命名为 music.dat 放进 assets/music/ 即可) */
   const SynthMusic = {
     ctx: null, master: null, delay: null, timer: null,
     playing: false, step: 0, nextTime: 0,
@@ -239,12 +278,44 @@
   };
 
   // ---------- 音乐控制 ----------
-  // 优先播放 assets/music/music.mp3(存在时), 否则用内置 WebAudio 合成音乐盒
+  // 优先播放 assets/music/music.dat(存在时), 否则用内置 WebAudio 合成音乐盒。
+  // 进站即尝试自动播放; 浏览器拦下时退到"点一下屏幕任意位置就响"。
   let audioEl = null;
   let usingMp3 = false;
   let musicPlaying = false;
   let audioFail = false;    // mp3 实际加载失败(服务器返回的可能是 WAF 挑战页而非音频)
-  let pendingPlay = false;  // 用户已点播放但音频还在下载, 就绪后自动续播
+  let starting = false;     // 一次启动流程还在进行中(play() 的 promise 还没落地)
+
+  const MUSIC_KEY = "love-music";          // "on" / "off": 用户的开关偏好
+  const MUSIC_POS_KEY = "love-music-pos";  // 播放到第几秒: 跳页时接着放
+  const MUSIC_POS_SAVE_MS = 5000;
+  /* 音频文件用 .dat 而不是 .mp3(2026-09-13 探针实测): 主机边缘层按【扩展名】给
+     音频强加 Cache-Control: no-store —— 同字节文件叫 .mp3 就被禁缓存(每次翻页
+     重新下载约 40KB、出声等 2-4 秒), 叫 .dat 就拿到正常的 30 天缓存, 且浏览器
+     照样当音频解码。
+     ⚠️ 千万不要在 .htaccess 给 .dat 加 AddType audio/mpeg —— 边缘层会重新把它
+     识别成音频, no-store 就回来了。
+     地址带版本号: 音频不像 css/js 那样被 build.py 自动打版本号, 换曲时必须手动
+     把 v=N 加一, 否则浏览器最久 30 天都在放缓存里的旧曲子。 */
+  const MUSIC_URL = "assets/music/music.dat?v=1";
+
+  // 浏览器禁用了站点存储(隐私模式)时, 读写失败都不该影响播放本身
+  function musicPrefOn() {
+    try { return localStorage.getItem(MUSIC_KEY) !== "off"; } catch (e) { return true; }
+  }
+  function setMusicPref(on) {
+    try { localStorage.setItem(MUSIC_KEY, on ? "on" : "off"); } catch (e) {}
+  }
+  function saveMusicPos() {
+    try {
+      if (audioEl && !audioEl.paused && audioEl.currentTime > 1) {
+        localStorage.setItem(MUSIC_POS_KEY, String(Math.floor(audioEl.currentTime)));
+      }
+    } catch (e) {}
+  }
+  function readMusicPos() {
+    try { return parseFloat(localStorage.getItem(MUSIC_POS_KEY)) || 0; } catch (e) { return 0; }
+  }
 
   const musicBtn = document.getElementById("musicBtn");
   if (musicBtn) {
@@ -254,71 +325,215 @@
       if (el) el.textContent = musicPlaying ? "🔊" : "🔇";
     }
 
-    // mp3 不可用时的兜底: 切内置合成旋律, 保证点了就一定有声音
+    // mp3 不可用时的兜底: 切内置合成旋律, 保证点了就一定有声音。
+    // 只允许在有用户手势时调用 —— WebAudio 没有手势时起不来, 会把图标点成"在响"却没有声音。
     function fallbackSynth(msg) {
       usingMp3 = false;
       audioFail = true;
-      pendingPlay = false;
+      starting = false;
       if (audioEl) { try { audioEl.pause(); } catch (e) {} }
       SynthMusic.start();
       musicPlaying = SynthMusic.playing;
+      disarmWake();
+      musicBtn.classList.remove("loading");
       setMusicUI();
       if (msg) toast(msg, true);
     }
 
+    /* 自动播放被拦下时的兜底: 让按钮呼吸 + 提示一句, 并等"用户第一次点击/按键"立刻播放。
+       监听挂在捕获阶段(第三个参数 true), 页面上任何元素的点击都能触发, 包括会
+       stopPropagation 的按钮和链接。不做静音自动播放 —— 静音等于没声音, 没有意义。 */
+    let wakeArmed = false;
+    let onWake = null;
+    /* 提示做成"常驻"的而不只是 2.4 秒的 toast: 一闪就没的提示最容易被理解成
+       "一直在加载/是不是坏了"。这块提示与音乐按钮同高并列, 出声后立即消失,
+       并且 pointer-events:none, 所以它永远不会挡住"点一下任意处"那一下。 */
+    let hintEl = null;
+    function showHint() {
+      if (hintEl) return;
+      hintEl = document.createElement("div");
+      hintEl.className = "music-hint";
+      hintEl.textContent = "点一下开始播放音乐";
+      document.body.appendChild(hintEl);
+    }
+    function hideHint() {
+      if (!hintEl) return;
+      try { hintEl.remove(); } catch (e) {}
+      hintEl = null;
+    }
+    function armWake(msg) {
+      if (wakeArmed) return;
+      wakeArmed = true;
+      musicBtn.classList.remove("loading");   // 已在等缓冲 → 升级成"点一下就能响"
+      musicBtn.classList.add("wake");
+      showHint();
+      if (msg) toast(msg);
+      onWake = function (e) {
+        /* 点音乐按钮本身时直接交给它的 click 处理器: 否则捕获阶段的 pointerdown
+           先起播、紧接着 click 又看到"在响"把它暂停, 点一下等于没点。 */
+        if (musicBtn.contains(e.target)) return;
+        disarmWake();
+        tryStart(true);
+      };
+      document.addEventListener("pointerdown", onWake, true);
+      document.addEventListener("keydown", onWake, true);
+    }
+    function disarmWake() {
+      hideHint();
+      if (!wakeArmed) return;
+      wakeArmed = false;
+      musicBtn.classList.remove("wake");
+      if (onWake) {
+        document.removeEventListener("pointerdown", onWake, true);
+        document.removeEventListener("keydown", onWake, true);
+        onWake = null;
+      }
+    }
+
+    // 自动播放突然满音量很吓人, 起播时淡入
+    let fadeTimer = null;
+    function fadeIn(el) {
+      clearInterval(fadeTimer);
+      let v = 0;
+      el.volume = 0;
+      fadeTimer = setInterval(function () {
+        v = Math.min(0.55, v + 0.055);
+        try { el.volume = v; } catch (e) {}
+        if (v >= 0.55) clearInterval(fadeTimer);
+      }, 150);
+    }
+
+    function onPlaying() {
+      musicPlaying = true;
+      starting = false;
+      disarmWake();
+      musicBtn.classList.remove("loading");
+      setMusicPref(true);
+      setMusicUI();
+    }
+
+    /* 唯一的启动入口: 想让它响的时候都走这里, 不再各自写一遍 play()。
+       fromGesture=true 表示这次调用来自用户操作 —— 只有这时才允许退到合成旋律。 */
+    function tryStart(fromGesture) {
+      if (musicPlaying || starting) return;
+      if (usingMp3 && audioEl && !audioFail) {
+        starting = true;
+        /* 不等 readyState 就调 play():
+           ① 自动播放被策略拦下时, play() 会**立刻**拒绝(不理会缓冲进度), 于是"点一下
+              屏幕"的提示马上就能出来 —— 等缓冲完再调的话, 慢主机上要让人对着不动的
+              按钮干等几十秒甚至几分钟(整曲比原来的卡农大了近三倍, 更明显);
+           ② 策略放行时 play() 的 promise 会一直等到真正出声才 resolve, 行为不变。 */
+        musicBtn.classList.add("loading");
+        audioEl.play().then(function () {
+          fadeIn(audioEl);
+          onPlaying();
+        }).catch(function (err) {
+          starting = false;
+          musicBtn.classList.remove("loading");
+          /* NotAllowedError = 浏览器拦了自动播放。这时绝不能退到合成旋律:
+             WebAudio 同样需要手势才能出声, 退了只会让图标亮着却没有声音。
+             其它错误(解码失败等)且有手势时, 才是真的换内置旋律。 */
+          if (fromGesture && !(err && err.name === "NotAllowedError")) {
+            fallbackSynth("播放失败，已切换内置旋律");
+          } else {
+            armWake("点一下屏幕任意位置，音乐就响");
+          }
+        });
+        return;
+      }
+      // 没有 mp3(或已失败): 合成旋律必须有手势才起得来
+      if (fromGesture) {
+        SynthMusic.start();
+        onPlaying();
+      } else {
+        armWake("点一下屏幕任意位置，音乐就响");
+      }
+    }
+
     // 探测 mp3 是否存在(仅 http 环境可行); file:// 下直接走合成音乐
+    function noMp3() {
+      if (musicPrefOn()) armWake("点一下屏幕任意位置，音乐就响");
+    }
+
     if (location.protocol.startsWith("http")) {
-      fetch("assets/music/music.mp3", { method: "HEAD" })
+      fetch(MUSIC_URL, { method: "HEAD" })
         .then((r) => {
-          if (!r.ok) return;
+          if (!r.ok) { noMp3(); return; }
           // 只认真正的音频响应: WAF 挑战页也是 200 但 content-type 是 text/html,
-          // 若放行会让 audioEl 加载 HTML 而静默无声
+          // 若放行会让 audioEl 加载 HTML 而静默无声。
+          // 反向判断(只拒绝明确的文档类响应), 不做音频白名单 —— music.dat 没有
+          // 音频扩展名语义, 主机/本地 php -S 可能不下发 content-type 或给
+          // octet-stream, 白名单会把这些能正常解码的响应误杀。
           const ct = (r.headers.get("content-type") || "").toLowerCase();
-          if (!/audio|mpeg|octet-stream/.test(ct)) return;
+          if (/html|xml|json/.test(ct)) { noMp3(); return; }
           usingMp3 = true;
-          audioEl = new Audio("assets/music/music.mp3");
+          audioEl = new Audio(MUSIC_URL);
           audioEl.loop = true;
           audioEl.volume = 0.55;
           audioEl.addEventListener("error", function () {
-            if (usingMp3) fallbackSynth("音频加载失败，已切换内置旋律");
+            if (!usingMp3) return;
+            audioFail = true;
+            starting = false;
+            musicBtn.classList.remove("loading");
+            /* 曾经响过说明这个文档里已经有手势, 可以直接切合成旋律;
+               否则只能等用户点一下。绝不能在这里直接 start(), 否则会出现
+               "图标在响、实际没声音"。 */
+            if (musicPlaying) fallbackSynth("音频加载失败，已切换内置旋律");
+            else armWake("背景音乐加载失败了，点一下屏幕听内置旋律");
           });
-          // 用户点过播放而音频还没就绪(服务器慢时可能等十几秒): 就绪后自动续播
-          audioEl.addEventListener("canplay", function () {
-            if (pendingPlay && usingMp3 && !audioFail) {
-              pendingPlay = false;
-              audioEl.play().then(function () {
-                musicPlaying = true;
-                setMusicUI();
-                toast("♪ 音乐响起，送给你");
-              }).catch(function () { fallbackSynth("播放失败，已切换内置旋律"); });
+          /* 播放位置: 整曲循环时"从哪继续"要跟上次一致, 站内跳页才不会每次从头。
+             先直接设(规范允许在元数据到来前设"默认起播位置"), 元数据到了再用真实
+             时长校验一次 —— 换曲后旧的位置可能超出新曲长度, 那时退回开头。 */
+          const savedPos = readMusicPos();
+          if (savedPos > 1) { try { audioEl.currentTime = savedPos; } catch (e) {} }
+          audioEl.addEventListener("loadedmetadata", function () {
+            if (savedPos <= 1) return;
+            const d = audioEl.duration;
+            const p = (d && savedPos > d - 3) ? 0 : savedPos;
+            if (Math.abs(audioEl.currentTime - p) > 0.5) {
+              try { audioEl.currentTime = p; } catch (e) {}
             }
           });
-          // 若合成音乐已在播放, 立即停掉, 避免双音轨
-          if (SynthMusic.playing) SynthMusic.stop();
+          // 若合成音乐已在播放, 立即停掉, 避免双音轨（同时同步图标状态）
+          if (SynthMusic.playing) {
+            SynthMusic.stop();
+            musicPlaying = false;
+            setMusicUI();
+          }
+          setInterval(saveMusicPos, MUSIC_POS_SAVE_MS);
+          window.addEventListener("pagehide", saveMusicPos);
+          document.addEventListener("visibilitychange", function () {
+            if (document.hidden) saveMusicPos();
+          });
+          // 用户没关过音乐 → 进站就尝试自动播放(被拦下会退到"点一下即响")
+          if (musicPrefOn()) tryStart(false);
         })
-        .catch(() => {});
+        .catch(noMp3);
+    } else {
+      noMp3();
     }
 
     musicBtn.addEventListener("click", () => {
-      if (usingMp3 && audioEl && !audioFail) {
-        if (audioEl.paused) {
-          if (audioEl.readyState >= 3) {
-            audioEl.play().catch(() => fallbackSynth("播放失败，已切换内置旋律"));
-          } else {
-            // 音频还在下载: 明确提示"加载中", 就绪后自动播放, 不会让人以为坏了
-            pendingPlay = true;
-            toast("♪ 音乐加载中，请稍候…");
-          }
+      if (musicPlaying) {
+        // 暂停: 记住"不想听", 下次进站不再自动播放
+        if (usingMp3 && audioEl && !audioFail) {
+          saveMusicPos();
+          try { audioEl.pause(); } catch (e) {}
         } else {
-          audioEl.pause();
+          SynthMusic.stop();
         }
-        musicPlaying = !audioEl.paused;
-      } else {
-        SynthMusic.toggle();
-        musicPlaying = SynthMusic.playing;
+        musicPlaying = false;
+        starting = false;
+        musicBtn.classList.remove("loading");
+        disarmWake();
+        setMusicPref(false);
+        setMusicUI();
+        return;
       }
-      setMusicUI();
-      if (musicPlaying) toast("♪ 音乐响起，送给你");
+      setMusicPref(true);
+      // 正在等缓冲(play() 的 promise 还没落地): 点一下给个明确说法, 别像没反应
+      if (starting) { toast("♪ 音乐加载中，请稍候…"); return; }
+      tryStart(true);
     });
   }
 
@@ -359,8 +574,9 @@
     const canvas = document.getElementById("confettiCanvas");
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
-    const W = (canvas.width = innerWidth);
-    const H = (canvas.height = innerHeight);
+    const W = innerWidth;
+    const H = innerHeight;
+    fitCanvas(canvas, W, H);
     const colors = ["#f06292", "#ff8aab", "#f8bbd0", "#b39ddb", "#ffab91", "#f9a825"];
     const parts = [];
     for (let i = 0; i < 160; i++) {
@@ -398,11 +614,18 @@
   window.launchFireworks = function (bursts) {
     const cv = document.getElementById("fxCanvas");
     if (!cv) return;
-    if (sessionStorage.getItem("fx-done")) return; // 本页会话只放一次
-    sessionStorage.setItem("fx-done", "1");
+    /* 按页面区分：sessionStorage 是"每个标签页"共享的，用同一个键时同一标签页里
+       只有第一个特殊日页面会放烟花，之后切到别的页面就不再庆祝了。
+       存储被禁用时（隐私模式）直接照常放一次。 */
+    var fxKey = "fx-done:" + location.pathname;
+    try {
+      if (sessionStorage.getItem(fxKey)) return;
+      sessionStorage.setItem(fxKey, "1");
+    } catch (e) { /* 站点存储不可用 → 不拦截 */ }
     const ctx = cv.getContext("2d");
-    const W = (cv.width = innerWidth);
-    const H = (cv.height = innerHeight);
+    const W = innerWidth;
+    const H = innerHeight;
+    fitCanvas(cv, W, H);
     const colors = ["#f06292", "#ff8aab", "#f8bbd0", "#b39ddb", "#ffab91", "#f9a825", "#ffffff"];
     let parts = [];
     const maxBursts = bursts || 6;
@@ -454,8 +677,9 @@
     const cx = cv.getContext("2d");
     let W, H, petals = [];
     function rs() {
-      W = cv.width = innerWidth;
-      H = cv.height = innerHeight;
+      W = innerWidth;
+      H = innerHeight;
+      fitCanvas(cv, W, H);
     }
     rs();
     addEventListener("resize", rs);
@@ -502,7 +726,7 @@
     document.body.appendChild(canvas);
     const ctx = canvas.getContext("2d");
     let W, H;
-    function resize() { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+    function resize() { W = window.innerWidth; H = window.innerHeight; fitCanvas(canvas, W, H); }
     resize();
     window.addEventListener("resize", resize);
 
@@ -548,7 +772,9 @@
     })();
   }
 
-  /* ---------- 启动飘心 ---------- */
-  cursorHearts();
-  createHeartsCanvas();
+  /* ---------- 启动飘心（系统开了减弱动态效果时全部跳过） ---------- */
+  if (!reduceMotion) {
+    cursorHearts();
+    createHeartsCanvas();
+  }
 })();

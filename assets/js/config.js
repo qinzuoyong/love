@@ -9,6 +9,55 @@
    手动改这里仍然有效（作为默认值），只是会被后台覆盖。
    ============================================================ */
 
+/* 老浏览器兜底：iOS Safari ≤10 / WebView <57 没有 padStart，
+   而全站计时、留言时间、倒计时都在用它（缺失会直接抛异常中断整段脚本）。
+   放在最前面、所有脚本之前，保证后续文件都能用。 */
+if (!String.prototype.padStart) {
+  String.prototype.padStart = function (len, pad) {
+    var s = String(this);
+    pad = pad === undefined ? " " : String(pad);
+    while (s.length < len) s = pad + s;
+    return s.length > len ? s.slice(s.length - len) : s;
+  };
+}
+
+/* 全局 HTML 转义：配置文案是管理员可写的，拼 innerHTML 前统一走这里
+   （gallery.js / letters.js 各有一份行为一致的局部实现，保持不动）。 */
+window.escHtml = function (v) {
+  if (v === null || v === undefined) return "";
+  return String(v).replace(/[&<>"']/g, function (c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+  });
+};
+
+/* 照片地址统一出口：PHP 主机上照片被 .htaccess 禁止直链，
+   只能通过根目录 photo.php 代理读取（服务端校验解锁 Cookie）。
+   纯静态托管 / 双击本地打开时没有 photo.php，保持原路径。
+   admin/ 页面用 window.__PHOTO_BASE__ = "../" 指定相对前缀。 */
+window.lovePhotoUrl = function (src) {
+  if (!src) return "";
+  var s = String(src);
+  if (/^data:/i.test(s)) return s;                            // 本机兜底照片是内联 dataURL：
+                                                              // 必须原样直出，送进 photo.php 只会 404
+                                                              // （代理的白名单只收 assets/… 路径）
+  if (/\.svg(\?|$)/i.test(s)) return s;                       // SVG 占位图仍直链
+  if (typeof window.__SERVER_GATE__ === "undefined") return s; // 无 PHP：保持原路径
+  var base = (typeof window.__PHOTO_BASE__ === "string") ? window.__PHOTO_BASE__ : "";
+  return base + "photo.php?f=" + encodeURIComponent(s);
+};
+
+/* 唯一 id 生成：原来的 Date.now() + Math.random()*1000 在同一毫秒内
+   并发提交时会撞车，服务端按 uid 去重会静默丢掉新内容。
+   加进程内自增序号，同一毫秒内也绝不重复。 */
+window.newUid = (function () {
+  var seq = 0;
+  return function (prefix) {
+    seq = (seq + 1) % 1296;
+    return String(prefix || "u") + Date.now().toString(36) + "-" +
+      Math.random().toString(36).slice(2, 8) + "-" + seq.toString(36);
+  };
+})();
+
 const DEFAULT_CONFIG = {
   /* ---------- 你们的名字 ----------
      ★★★ 把"待定A / 待定B"改成你们的真名/昵称 ★★★
@@ -206,6 +255,43 @@ const DEFAULT_CONFIG = {
     "你第一眼看到我时，心里在想什么？",
     "如果给我准备一个惊喜，会是什么？",
   ],
+
+  /* ---------- 每日一问 ----------
+     每天从下面这些题里轮一题（按日期固定，双方看到的是同一题）；
+     两个人都答完才能看到对方的答案。想加题就往数组里加。
+     参考 Paired 的「每日一问」：低压力、每天一句，久了就是一本对话集 */
+  dailyQuestions: [
+    "今天有什么小事让你想到我？",
+    "最近有什么事让你压力很大？我能帮上什么吗？",
+    "如果这周我们可以空出一整天，你想怎么过？",
+    "我做的哪件小事你其实很在意，但从没说过？",
+    "你现在最想要的一个拥抱是什么时候？",
+    "最近有没有什么想尝试但一直没开始的事？",
+    "在你眼里，我们最像哪个电影/小说里的情侣？",
+    "今天最想对我说的一句话是什么？",
+    "你最近睡得好吗？有没有什么在偷偷担心？",
+    "如果我们现在去旅行，你第一个想去哪？",
+    "有没有哪一刻你觉得特别为我骄傲？",
+    "你希望我多问你的一个问题是什么？",
+    "最近有没有一首歌让你想起我们？",
+    "如果给我们现在的生活加一件小事，你想加什么？",
+    "你小时候的梦想是什么？现在变了吗？",
+    "最近有什么事让你偷偷开心了很久？",
+    "你觉得我们之间最默契的一次是什么时候？",
+    "有什么话你一直想听我说，但还没听到？",
+    "今天想让我陪你做的一件小事是什么？",
+    "你觉得我们现在最需要一起改掉的一个习惯？",
+    "如果给这一年起个标题，你会写什么？",
+    "你最近一次觉得被我理解，是什么时候？",
+    "有没有什么旧照片/旧东西你舍不得扔？",
+    "如果明天可以任性一次，你想做什么？",
+    "你希望我们十年后的周末是什么样子？",
+    "今天有什么让你觉得被爱着的瞬间？",
+    "最近有没有想对我说但怕我多想的？",
+    "你最想和我一起完成的一个小目标是什么？",
+    "如果现在写一封一年后才会打开的信，第一句会写什么？",
+    "今天，你最想谢谢我什么？",
+  ],
 };
 
 /* ============================================================
@@ -217,6 +303,7 @@ const DEFAULT_CONFIG = {
    本地开发没有 PHP 时不会注入，直接用默认配置。
    ============================================================ */
 window.DEFAULT_CONFIG = DEFAULT_CONFIG;
+window.__mergeConfig = __mergeConfig;
 
 function __mergeConfig(base, over) {
   if (over === null || over === undefined) return base;
@@ -224,6 +311,9 @@ function __mergeConfig(base, over) {
   if (typeof base === "object" && typeof over === "object") {
     var out = {};
     for (var k in base) out[k] = __mergeConfig(base[k], over[k]);
+    // 服务器覆盖里"默认配置没有"的键也要留住：只遍历 base 会把它们静默丢掉，
+    // 以后后台新增配置项时前台就永远看不到（现在 CFG_KEYS 与默认值一致，只是没踩到）。
+    for (var k2 in over) if (!(k2 in out)) out[k2] = over[k2];
     return out;
   }
   return over;
