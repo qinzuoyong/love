@@ -17,27 +17,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($installed) {
         $err = '管理员已存在，不能再安装';
     } else {
-        $user = trim((string)($in['username'] ?? ''));
-        $pass = (string)($in['password'] ?? '');
-        $pass2 = (string)($in['password2'] ?? '');
+        $user = trim(u_str($in['username'] ?? ''));
+        $pass = u_str($in['password'] ?? '');
+        $pass2 = u_str($in['password2'] ?? '');
         if (u_len($user) < 2 || u_len($user) > 20) {
             $err = '用户名 2-20 个字符';
-        } elseif (strlen($pass) < 6) {
+        } elseif (u_len($pass) < 6) {
             $err = '密码至少 6 位';
         } elseif ($pass !== $pass2) {
             $err = '两次输入的密码不一致';
-        } elseif (!love_write('admin.json', [
-            'username' => $user,
-            'pass_hash' => password_hash($pass, PASSWORD_DEFAULT),
-            'created' => time(),
-        ])) {
-            $err = '写入失败：data/ 目录不可写（见下方自检结果）';
         } else {
-            love_session();
-            $_SESSION['love_admin'] = $user;
-            $_SESSION['love_csrf'] = bin2hex(random_bytes(16));
-            header('Location: index.php');
-            exit;
+            /* 加锁写入 + 锁内二次判定：两个并发请求可能同时通过上面的 $installed
+               检查（它是本次请求开头算出来的），旧实现的"无条件写"会让后写者
+               静默覆盖先写者 —— 别人用另一个密码就把刚建好的账号顶掉，双方都不知情。 */
+            $raceErr = null;
+            $written = love_mutate('admin.json', function ($cur) use ($user, $pass, &$raceErr) {
+                /* 与 lib/store.php 的 love_admin_exists() 同一口径：两个键都是
+                   非空字符串才算"已安装"——数组型的脏数据不算，避免
+                   "存在性判断说没装、锁内判定说已存在"的口径分叉。 */
+                if (is_array($cur)
+                    && is_string($cur['username'] ?? null) && $cur['username'] !== ''
+                    && is_string($cur['pass_hash'] ?? null) && $cur['pass_hash'] !== '') {
+                    $raceErr = '管理员已存在，不能再安装';
+                    return $cur;
+                }
+                return [
+                    'username' => $user,
+                    'pass_hash' => password_hash($pass, PASSWORD_DEFAULT),
+                    'created' => time(),
+                ];
+            }, []);
+            if ($raceErr !== null) {
+                $err = $raceErr;
+            } elseif (!is_array($written)) {
+                $err = '写入失败：data/ 目录不可写（见下方自检结果）';
+            } else {
+                love_session_login($user);        // 换新 Session ID，防会话固定
+                header('Location: index.php');
+                exit;
+            }
         }
     }
 }
@@ -57,11 +75,18 @@ function probe_write(string $dir): string {
 $checks = [
     'data/（配置与数据）'  => probe_write(love_data_dir()),
     'assets/img/uploads/（照片）' => probe_write(love_uploads_dir()),
+    'mbstring（中文截断）' => function_exists('mb_substr') || function_exists('iconv')
+        ? '✅ 已安装'
+        : '⚠️ 未安装（会退回按字节截断，建议开启 mbstring 或 iconv）',
 ];
+/* 建目录时顺手落保护文件：不依赖 tools/deploy.py 也能挡住 /data/ 直接下载 */
+love_protect_data_dir(love_data_dir());
+love_protect_uploads_dir(love_uploads_dir());
 ?>
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
+<?php love_emit_https_upgrade(); ?>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="robots" content="noindex,nofollow">
