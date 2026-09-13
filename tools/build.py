@@ -29,7 +29,7 @@ EXCLUDE_DIRS = {"dist", "tools", "deploy", "data", "uploads", ".git", "__pycache
 EXCLUDE_FILES = {"gen_placeholders.py", "README.md", "LICENSE", ".gitignore"}
 
 # HTML 里的资源引用: src="assets/..." 或 href="assets/..."（含 admin 页的 ../assets/...）
-RES_RE = re.compile(r'(src|href)="((?:\.\./)?assets/[^"]?#]+)"')
+RES_RE = re.compile(r'(src|href)="((?:\.\./)?assets/[^"?#]+)"')
 
 
 def md5v(path):
