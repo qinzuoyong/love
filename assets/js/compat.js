@@ -31,19 +31,7 @@
   var startBtn = document.getElementById("compatStart");
   var histEl = document.getElementById("compatHist");
 
-  /* 设备号：优先复用 loveServer（server.js 可能未在本页加载，
-     故自带生成逻辑兜底，与 server.js 共用同一个 localStorage key） */
-  function myDeviceId() {
-    var d = "";
-    if (window.loveServer && window.loveServer.deviceId) return window.loveServer.deviceId;
-    try { d = localStorage.getItem("love-device") || ""; } catch (e) {}
-    if (!d) {
-      d = "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
-      try { localStorage.setItem("love-device", d); } catch (e) {}
-    }
-    return d;
-  }
-  var deviceId = myDeviceId();
+  /* 身份由服务端 HttpOnly Cookie 决定，前端不再持有任何设备号/凭据 */
   var myRole = null;      // 'boy' | 'girl'（当前回合我的身份）
   var roundId = null;     // 当前回合 id
   var questions = [];     // 当前回合题目快照
@@ -88,22 +76,22 @@
   }
 
   /* ---------------- 服务器请求 ---------------- */
-  /* 注入的通用 active → 接口标准视图（含 aDeviceId，前端判断身份） */
+  /* 注入的 active 已由服务端按 Cookie 身份换算好（myRole/iAnswered/canJoin），
+     前端不需要、也拿不到任何设备凭据 */
   function adaptInjected(a) {
     if (!a) return null;
-    var mine = a.aDeviceId === deviceId;
     return {
       id: a.id,
       status: a.status,
       questions: a.questions,
-      myRole: mine ? a.aRole : (a.status === "waiting_b" ? a.bRole : ""),
-      iAnswered: mine ? a.aAnswered : false,
-      canJoin: !mine && a.status === "waiting_b",
-      waitingFor: mine && a.status === "waiting_b" ? "b" : null,
+      myRole: a.myRole || "",
+      iAnswered: !!a.iAnswered,
+      canJoin: !!a.canJoin,
+      waitingFor: a.waitingFor || null,
     };
   }
   function fetchStatus() {
-    return fetch(API + "?action=status&deviceId=" + encodeURIComponent(deviceId), { cache: "no-store" })
+    return fetch(API + "?action=status", { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (j) { if (!j.ok) throw new Error(j.error || "服务器错误"); return j; });
   }
@@ -117,7 +105,8 @@
       return Promise.resolve({
         active: adaptInjected(inj.active),
         history: inj.history || [],
-      });
+        busy: !!inj.busy,     // 注入视图带 busy（对方正在作答）；漏掉它会把首屏
+      });                     // 的"忙"渲染成身份选择，要等点创建被拒才恢复
     }
     return fetchStatus();
   }
@@ -128,7 +117,12 @@
       body: JSON.stringify(payload),
     }).then(function (r) {
       return r.json().then(function (j) {
-        if (!r.ok || !j.ok) throw new Error(j.error || "http " + r.status);
+        if (!r.ok || !j.ok) {
+          var err = new Error(j.error || "http " + r.status);
+          err.server = true;          // 服务端明确拒绝（业务错误，重试无用）
+          err.payload = j;
+          throw err;
+        }
         return j;
       });
     });
@@ -176,7 +170,14 @@
     });
   }
 
+  /* 双击的第二击会落在重建后的"下一题"同位置按钮上 → 同一序号连答两题。
+     时间窗只需吞掉双击（<250ms）；真人在两题之间的阅读间隔不可能这么短。
+     （game.js 用 locked+1400ms，这里题目节奏快，用时间戳更合适。） */
+  var lastAskAt = 0;
   function ask(i) {
+    var now = Date.now();
+    if (now - lastAskAt < 250) return;
+    lastAskAt = now;
     answers[index] = i;
     index++;
     if (index < questions.length) renderQ();
@@ -187,7 +188,7 @@
   function renderWaiting() {
     barEl.style.display = "none";
     optsEl.innerHTML = "";
-    var ta = nameOf(otherRole(myRole));
+    var ta = esc(nameOf(otherRole(myRole)));
     quesEl.innerHTML = "✅ 你已答完！<b>" + ta + "</b> 还在作答…";
     msgEl.innerHTML = "答案已安全保存到服务器，等 TA 答完后，你们就能一起看到逐题对比啦。<br>（TA 打开游戏页面会自动接到这一轮）";
     startBtn.textContent = "📱 把手机给 TA 作答";
@@ -200,12 +201,23 @@
   function renderJoinable() {
     barEl.style.display = "none";
     optsEl.innerHTML = "";
-    var me = nameOf(myRole);
-    quesEl.innerHTML = "🥰 <b>" + nameOf(otherRole(myRole)) + "</b> 正在等你作答！";
+    var meRaw = nameOf(myRole);     // textContent 用原值
+    var me = esc(meRaw);            // innerHTML 才需要转义
+    quesEl.innerHTML = "🥰 <b>" + esc(nameOf(otherRole(myRole))) + "</b> 正在等你作答！";
     msgEl.innerHTML = "TA 已经答完了这一轮，就差你了。开始后你会以「" + me + "」的身份作答，答完立刻出结果。";
-    startBtn.textContent = "💞 开始作答（我是 " + me + "）";
+    startBtn.textContent = "💞 开始作答（我是 " + meRaw + "）";
     startBtn.dataset.mode = "join";
     startBtn.style.display = "inline-flex";
+    if (window.revealNow) window.revealNow();
+  }
+
+  /* 对方正在逐题作答（服务端只告知"有人在做"，不含任何答案） */
+  function renderBusyWait() {
+    barEl.style.display = "none";
+    optsEl.innerHTML = "";
+    quesEl.textContent = "⏳ 对方正在作答中…";
+    msgEl.innerHTML = "TA 正在答这一轮的 " + N_PER_ROUND + " 道题，答完后这个页面会自动接手，请稍候。";
+    startBtn.style.display = "none";
     if (window.revealNow) window.revealNow();
   }
 
@@ -213,8 +225,8 @@
     barEl.style.display = "none";
     optsEl.innerHTML = "";
     var aName = nameOf(res.roles.a), bName = nameOf(res.roles.b);
-    quesEl.innerHTML = (title || "💞 默契值") + " <b class='compat-big' data-count=" + res.pct + ">" + res.pct + "%</b> · " + verdict(res.pct);
-    msgEl.innerHTML = "共 " + res.total + " 题，你们答对了一样 " + res.same + " 题";
+    quesEl.innerHTML = (title || "💞 默契值") + " <b class='compat-big' data-count=" + esc(res.pct) + ">" + esc(res.pct) + "%</b> · " + verdict(res.pct);
+    msgEl.innerHTML = "共 " + esc(res.total) + " 题，你们答对了一样 " + esc(res.same) + " 题";
     optsEl.innerHTML = res.detail.map(function (d, i) {
       return '<div class="compat-row' + (d.match ? " ok" : " no") + '">' +
         '<div class="compat-q">' + (i + 1) + ". " + esc(d.q) + " " + (d.match ? "✅" : "❌") + "</div>" +
@@ -261,10 +273,12 @@
     list.forEach(function (r) {
       var row = document.createElement("button");
       row.className = "compat-hist-row";
-      row.innerHTML = "<span class='compat-hist-pct'>" + r.pct + "%</span>" +
+      /* r.pct/same/total 是服务端算好的数字，这里按"拼 innerHTML 一律转义"
+         的项目约定统一走 esc —— 兜住 compat.json 被手工改坏成字符串的情况 */
+      row.innerHTML = "<span class='compat-hist-pct'>" + esc(r.pct) + "%</span>" +
         "<span class='compat-hist-info'>" + esc(nameOf(r.roles.a)) + " ♥ " + esc(nameOf(r.roles.b)) +
-        " · 相同 " + r.same + "/" + r.total + " 题</span>" +
-        "<span class='compat-hist-time'>" + fmtRel(r.at) + "</span>";
+        " · 相同 " + esc(r.same) + "/" + esc(r.total) + " 题</span>" +
+        "<span class='compat-hist-time'>" + esc(fmtRel(r.at)) + "</span>";
       row.addEventListener("click", function () {
         renderResult({
           pct: r.pct, same: r.same, total: r.total, roles: r.roles,
@@ -283,6 +297,8 @@
     renderHistory(j.history || []);
     var a = j.active;
     if (!a) {
+      // 有人在作答（服务端只给"忙"这个信号，不给任何内容）→ 等待并轮询
+      if (j.busy) { renderBusyWait(); startPolling(); return; }
       // 无活跃回合 → 发起界面（含身份选择）
       renderRolePick();
       return;
@@ -333,20 +349,35 @@
     quesEl.innerHTML = "⏳ 正在创建回合…";
     optsEl.innerHTML = "";
     startBtn.style.display = "none";
-    post({ action: "create", role: role, questions: questions, deviceId: deviceId })
+    post({ action: "create", role: role, questions: questions })
       .then(function (j) {
         roundId = j.round.id;
         renderAnswering();
       })
       .catch(function (e) {
-        fallbackLocal();   // 服务器不可用 → 回退本地双槽
+        if (e && e.server) {
+          // 服务端明确拒绝：不要静默退回本地模式（那会让人以为服务器坏了）
+          if (e.payload && e.payload.busy) {
+            // 对方正在作答：等待并轮询，等 TA 答完自动接手
+            renderBusyWait();
+            startPolling();
+            return;
+          }
+          msgEl.innerHTML = "⚠️ " + esc(e.message);
+          quesEl.textContent = "💞 默契度测试";
+          startBtn.textContent = "🔄 重新选择身份";
+          startBtn.dataset.mode = "restart";
+          startBtn.style.display = "inline-flex";
+          return;
+        }
+        fallbackLocal();   // 网络/服务器不可用 → 回退本地双槽
       });
   }
 
   function submitRound() {
     barEl.style.display = "none";
     quesEl.textContent = "⏳ 正在提交…";
-    post({ action: "submit", id: roundId, role: myRole, answers: answers, deviceId: deviceId })
+    post({ action: "submit", id: roundId, role: myRole, answers: answers })
       .then(function (j) {
         if (j.done) {
           stopPolling();
@@ -361,12 +392,18 @@
         }
       })
       .catch(function (e) {
-        // 提交失败：保留答案，按钮恢复让用户重试
+        var isServer = !!(e && e.server);
         optsEl.innerHTML = "";
-        msgEl.innerHTML = "⚠️ 提交失败（" + esc(e.message) + "），请检查网络后重试";
+        msgEl.innerHTML = "⚠️ " + (isServer ? esc(e.message) : "提交失败（" + esc(e && e.message) + "），请检查网络后重试");
         quesEl.textContent = "已答完 " + questions.length + " / " + questions.length + " 题";
-        startBtn.textContent = "🔄 重新提交";
-        startBtn.dataset.mode = "retry";
+        if (isServer) {
+          // 业务错误（回合已被对方作废 / 已经答过）：重试没有意义，只能重新开始
+          startBtn.textContent = "🔄 重新开始一轮";
+          startBtn.dataset.mode = "restart";
+        } else {
+          startBtn.textContent = "🔄 重新提交";
+          startBtn.dataset.mode = "retry";
+        }
         startBtn.style.display = "inline-flex";
       });
   }
@@ -377,12 +414,11 @@
       // 必须强制实时 fetch：注入的 __SERVER_COMPAT__ 是页面加载那一刻的
       // 快照，拿它轮询永远等不到对方答完（刷新过页面就中招）
       getStatus(true).then(function (j) {
-        if (j.active && j.active.status === "done") {
-          stopPolling();
-          dispatch(j);
-        } else {
-          renderHistory(j.history || []);
-        }
+        var a = j.active;
+        if (a && a.status === "done") { stopPolling(); dispatch(j); return; }
+        if (a && a.canJoin) { stopPolling(); dispatch(j); return; }
+        if (!a && !j.busy) { stopPolling(); dispatch(j); return; }   // 对方放弃了/回合过期
+        renderHistory(j.history || []);
       }).catch(function () { /* WAF/网络抖动时静默，等下一次 */ });
     }, POLL_MS);
   }
@@ -467,6 +503,10 @@
       // 重新提交：答案还在内存里，直接重发当前回合（绝不能开新回合丢答案）
       startBtn.style.display = "none";
       submitRound();
+    } else if (mode === "restart") {
+      // 回合已被作废/已经答过：重试无意义，回到身份选择重新开始
+      startBtn.style.display = "none";
+      getStatus(true).then(dispatch).catch(function () { renderRolePick(); });
     } else if (mode === "again") {
       if (!confirmReset) {
         confirmReset = true;
