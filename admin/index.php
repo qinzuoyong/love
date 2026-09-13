@@ -11,6 +11,7 @@ love_session();
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
+<?php love_emit_https_upgrade(); ?>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex,nofollow">
@@ -53,6 +54,37 @@ love_session();
   .savebar .state { color:var(--sub); font-size:12px; flex:1; }
   .savebar .state.dirty { color:#e08f2e; }
   .savebar .state.ok { color:#2e9e5b; }
+
+  /* ---------- 顶部通知横幅 ----------
+     每次保存/上传/删除的结果都在这里弹出：带图标、带底色、左侧色条，
+     成功绿、警告琥珀、失败红；失败不自动消失，必须点一下才关。 */
+  .toastbox { position:fixed; top:12px; left:50%; transform:translateX(-50%); z-index:120;
+    display:flex; flex-direction:column; gap:8px; width:min(560px,94vw); pointer-events:none; }
+  .toast { pointer-events:auto; display:flex; align-items:flex-start; gap:10px;
+    background:#fff; border:1px solid var(--line); border-left:6px solid var(--pink);
+    border-radius:12px; padding:12px 14px; font-size:14px; line-height:1.5; color:var(--ink);
+    box-shadow:0 12px 34px rgba(214,69,126,.26); cursor:pointer;
+    animation:toastIn .22s ease-out; }
+  .toast.ok   { border-left-color:#2e9e5b; background:#f2fbf6; color:#1f6b41; }
+  .toast.warn { border-left-color:#e08f2e; background:#fff8ec; color:#8a5a10; }
+  .toast.err  { border-left-color:#c2365f; background:#fff1f5; color:#a52a4d; }
+  .toast .ico { flex:0 0 auto; font-size:17px; line-height:1.35; }
+  .toast .txt { flex:1; white-space:pre-line; word-break:break-word; }
+  .toast .x   { flex:0 0 auto; border:0; background:transparent; color:inherit; opacity:.55;
+    font-size:15px; line-height:1.4; cursor:pointer; padding:0 2px; }
+  .toast .x:hover { opacity:1; }
+  .toast.out  { animation:toastOut .18s ease-in forwards; }
+  @keyframes toastIn  { from { opacity:0; transform:translateY(-18px); } to { opacity:1; transform:none; } }
+  @keyframes toastOut { to { opacity:0; transform:translateY(-10px); } }
+
+  /* 有未保存改动时，保存按钮轻微呼吸 */
+  @keyframes savePulse { 0%,100% { box-shadow:0 0 0 0 rgba(240,98,146,.5); } 50% { box-shadow:0 0 0 7px rgba(240,98,146,0); } }
+  .savebar .btn.dirty { animation:savePulse 1.6s ease-out infinite; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .toast, .toast.out, .savebar .btn.dirty { animation:none; }
+  }
+  @media (max-width:700px){ .toast { font-size:13.5px; padding:11px 12px; } }
   .msg { padding:8px 10px; border-radius:8px; font-size:13px; margin:8px 0; }
   .msg.err { background:#ffe9ef; color:#c2365f; }
   .msg.ok { background:#e8f7ee; color:#2e7d4f; }
@@ -118,7 +150,7 @@ love_session();
         <p class="desc">⭐ 只改"在一起的日期"即可：相恋100天、相恋一周年、第一次相遇的日期会自动计算（列表里对应项显示为灰色不可改）。</p>
         <div class="grid2">
           <div><label class="f">在一起的日期（startDate）</label><input type="date" id="f_startDate"></div>
-          <div><label class="f">解锁页密码（留空 = 直接进入）</label><input type="text" id="f_password" maxlength="20" placeholder="如 520520"></div>
+          <div><label class="f">解锁页密码（留空 = 直接进入）</label><input type="text" id="f_password" maxlength="20" placeholder="如 520520"><div class="muted">首尾空格会被自动忽略（保存前去掉）；想关掉门禁请把此框清空，而不是填空格。</div></div>
         </div>
       </div>
       <div class="panel">
@@ -195,6 +227,12 @@ love_session();
         <div id="ed_truthDares"></div>
         <button class="btn ghost add-btn" data-add="truthDares">＋ 加一张</button>
       </div>
+      <div class="panel">
+        <h2>每日一问 dailyQuestions</h2>
+        <p class="desc">每天按日期轮一题，双方看到同一题；两个人都答完才能看到对方的答案。想加题就往下加。</p>
+        <div id="ed_dailyQuestions"></div>
+        <button class="btn ghost add-btn" data-add="dailyQuestions">＋ 加一题</button>
+      </div>
     </section>
 
     <!-- 相册管理 -->
@@ -226,6 +264,16 @@ love_session();
       <div class="panel">
         <h2>手写情书（服务器存储）</h2>
         <div id="ctLetters"></div>
+      </div>
+      <div class="panel">
+        <h2>时间胶囊（服务器存储）</h2>
+        <p class="desc">写给未来的信：开启日之前前台看不到标题和正文，这里（管理员）可以看到全部。</p>
+        <div id="ctCapsules"></div>
+      </div>
+      <div class="panel">
+        <h2>每日一问的回答（服务器存储）</h2>
+        <p class="desc">按日期列出双方的回答，可整日删除</p>
+        <div id="ctDaily"></div>
       </div>
       <div class="panel">
         <h2>默契度测试回合（服务器存储）</h2>
@@ -273,9 +321,13 @@ love_session();
     <span class="state" id="saveState">就绪</span>
     <button class="btn" id="saveBtn">💾 保存全部修改</button>
   </div>
+
+  <!-- 通知横幅容器：最新的在最上面，失败提示点一下才关 -->
+  <div id="toastBox" class="toastbox" role="status" aria-live="polite"></div>
 </div>
 
 <script src="../api/config.php"></script>
+<script>window.__PHOTO_BASE__ = "../";</script>
 <script src="../assets/js/config.js"></script>
 <script>
 (function () {
@@ -284,6 +336,8 @@ love_session();
   /* ---------------- 状态 ---------------- */
   var DEFAULT_CONFIG = window.DEFAULT_CONFIG || {};
   var cfg = JSON.parse(JSON.stringify(CONFIG || {}));   // 工作副本（表单编辑这个）
+  var cfgBaseline = {};                                 // 打开面板时的快照：用于"只保存改动过的键"
+  var baseOverrides = {};                               // 打开面板时 config.json 里的原始覆盖（已修复历史遗留）
   var csrf = "";
   var loggedIn = false;
   var dirty = false;
@@ -299,14 +353,111 @@ love_session();
 
   /* ---------------- 基础工具 ---------------- */
   function $(id) { return document.getElementById(id); }
-  function toast(msg, isErr) {
-    var el = $("saveState");
-    el.textContent = msg;
-    el.className = "state " + (isErr ? "dirty" : "ok");
-    clearTimeout(toast._t);
-    toast._t = setTimeout(function () { if (!dirty) { el.textContent = "就绪"; el.className = "state"; } }, 2600);
+
+  /* ---------------- 顶部通知横幅 ----------------
+     toast(msg, kind)：kind = "ok"(默认) / "warn" / "err"，
+     兼容旧的 toast(msg, true) → 错误。成功/警告会自动消失，
+     失败必须点一下才关（重要提示不能被 2 秒自动吃掉）。 */
+  var TOAST_META = {
+    ok:   { ico: "✅", ms: 3200 },
+    warn: { ico: "⚠️", ms: 6000 },
+    err:  { ico: "⛔", ms: 0 }        // 0 = 不自动关闭
+  };
+  var TOAST_MAX = 4;
+
+  function toast(msg, kind) {
+    if (kind === true) kind = "err";                       // 旧调用点兼容
+    if (kind !== "ok" && kind !== "warn" && kind !== "err") kind = "ok";
+    var box = $("toastBox");
+    if (!box) return;
+    var meta = TOAST_META[kind];
+
+    var el = document.createElement("div");
+    el.className = "toast " + kind;
+    var ico = document.createElement("span");
+    ico.className = "ico"; ico.textContent = meta.ico;
+    var txt = document.createElement("span");
+    txt.className = "txt"; txt.textContent = msg;          // textContent：不解析 HTML
+    var x = document.createElement("button");
+    x.type = "button"; x.className = "x"; x.textContent = "✕";
+    x.setAttribute("aria-label", "关闭提示");
+    el.appendChild(ico); el.appendChild(txt); el.appendChild(x);
+
+    var closed = false;
+    function close() {
+      if (closed) return;
+      closed = true;
+      el.classList.add("out");
+      setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 200);
+    }
+    el.addEventListener("click", close);
+    x.addEventListener("click", function (e) { e.stopPropagation(); close(); });
+
+    box.insertBefore(el, box.firstChild);                  // 最新一条在最上面
+    while (box.children.length > TOAST_MAX) box.removeChild(box.lastChild);
+    if (meta.ms) setTimeout(close, meta.ms);
+    return el;
   }
-  function markDirty() { dirty = true; var el = $("saveState"); el.textContent = "有未保存的修改"; el.className = "state dirty"; }
+
+  function closeAllToasts() {
+    var box = $("toastBox");
+    if (!box) return;
+    while (box.firstChild) box.removeChild(box.firstChild);
+  }
+
+  /* ---------------- 底部状态栏 + 未保存提醒 ---------------- */
+  function setState(kind, text) {
+    var el = $("saveState");
+    if (!el) return;
+    el.textContent = text;
+    el.className = "state" + (kind ? " " + kind : "");
+  }
+  function syncTitle() {
+    document.title = (dirty ? "● " : "") + "管理员后台 · 情侣网站";
+  }
+  function markDirty() {
+    dirty = true;
+    setState("dirty", "有未保存的修改");
+    var btn = $("saveBtn");
+    if (btn) btn.classList.add("dirty");
+    syncTitle();
+  }
+  function clearDirty(stamp) {
+    dirty = false;
+    setState("ok", stamp || "✅ 已保存");
+    var btn = $("saveBtn");
+    if (btn) btn.classList.remove("dirty");
+    syncTitle();
+  }
+  /** 保存按钮上的即时反馈：显示一句话，过一会儿恢复 */
+  function flashSaveBtn(text, ms) {
+    var btn = $("saveBtn");
+    if (!btn) return;
+    btn.textContent = text;
+    clearTimeout(flashSaveBtn._t);
+    flashSaveBtn._t = setTimeout(function () { btn.textContent = "💾 保存全部修改"; }, ms);
+  }
+  function nowHM() {
+    var d = new Date();
+    return ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2);
+  }
+
+  // 有未保存修改时离开页面 → 浏览器原生确认框（防误关丢修改）
+  window.addEventListener("beforeunload", function (e) {
+    if (!dirty) return;
+    e.preventDefault();
+    e.returnValue = "";
+    return "";
+  });
+
+  // 服务端逐条校验：某条内容没填完整/格式错会被跳过（不会清空整组），这里汇总提示
+  function skippedNote(j) {
+    var sk = (j && j.skipped) || {};
+    var keys = Object.keys(sk);
+    if (!keys.length) return "";
+    var n = keys.reduce(function (a, k) { return a + (sk[k] || 0); }, 0);
+    return "；有 " + n + " 条内容没填完整或格式不对已跳过（" + keys.join("、") + "）";
+  }
 
   function api(action, data, withCsrf) {
     var body = data || {};
@@ -331,6 +482,7 @@ love_session();
     api("login", { username: $("lgUser").value.trim(), password: $("lgPass").value }, true)
       .then(function (j) {
         csrf = j.csrf; loggedIn = true;
+        closeAllToasts();                       // 清掉登录前可能残留的提示
         $("whoLine").textContent = "已登录：" + j.username;
         bootApp();
       })
@@ -339,7 +491,8 @@ love_session();
   $("lgPass").addEventListener("keydown", function (e) { if (e.key === "Enter") $("lgBtn").click(); });
 
   $("logoutBtn").addEventListener("click", function () {
-    api("logout", {}, false).finally(function () { location.reload(); });
+    dirty = false;                 // 主动退出＝放弃修改，不要被"未保存"提醒拦住
+    api("logout", {}, true).finally(function () { location.reload(); });
   });
 
   /* ---------------- 表单构建 ---------------- */
@@ -347,7 +500,7 @@ love_session();
 
   function defaultRow(key) {
     switch (key) {
-      case "messages": case "truthDares": return "";
+      case "messages": case "truthDares": case "dailyQuestions": return "";
       case "homeCards": return { icon: "💗", title: "", text: "", link: "home.html", linkText: "去看看 →" };
       case "anniversaries": return { icon: "🎉", title: "", date: "01-01", type: "repeat", lunar: false };
       case "timeline": return { date: "2026-01-01", icon: "⭐", title: "", text: "" };
@@ -573,11 +726,53 @@ love_session();
     $("f_greeting").value = esc(cfg.greeting);
   }
 
-  /* ---------------- 保存（diff 后只传变化） ---------------- */
+  /* ---------------- 保存（只传真正改动过的键） ----------------
+     注意：cfg 是"已派生"的（名字已替换成真名、auto 日期已算好），
+     直接与 DEFAULT_CONFIG 比较会把派生结果整体写进 data/config.json，
+     从此占位名「待定A/待定B」被写死，改名字就再也不同步了。
+     正确做法：以"打开面板时 config.json 里的覆盖"为底，
+     只把用户这次真正改过的键覆盖上去。 */
+  function refreezeValue(v, dv, names) {
+    if (typeof v === "string") {
+      if (typeof dv === "string") {
+        var boy = (names && names.boy) || "";
+        var girl = (names && names.girl) || "";
+        if (dv.indexOf("待定A") !== -1 && boy) v = v.split(boy).join("待定A");
+        if (dv.indexOf("待定B") !== -1 && girl) v = v.split(girl).join("待定B");
+      }
+      return v;
+    }
+    if (Array.isArray(v)) {
+      return v.map(function (x, i) { return refreezeValue(x, Array.isArray(dv) ? dv[i] : undefined, names); });
+    }
+    if (v && typeof v === "object") {
+      var o = {};
+      for (var k in v) o[k] = refreezeValue(v[k], (dv && typeof dv === "object") ? dv[k] : undefined, names);
+      return o;
+    }
+    return v;
+  }
   function collectOverrides() {
-    var ov = {};
+    var ov = deepClone(baseOverrides);        // 保留服务器上已有的自定义
+    /* 反向冻结（refreezeValue）必须用"派生时实际用过的名字"：
+       cfgBaseline 是 __deriveConfig 之后的快照，记的正是那些旧名字。
+       不能用 cfg.names —— 那是用户此刻在表单里改成的新名字，拿它去匹配
+       旧派生值必然匹配不上，旧真名会被原样写进磁盘，以后再改名就不同步了。 */
+    var curNames = (cfgBaseline.names && typeof cfgBaseline.names === "object") ? cfgBaseline.names : null;
     Object.keys(DEFAULT_CONFIG).forEach(function (k) {
-      if (JSON.stringify(cfg[k]) !== JSON.stringify(DEFAULT_CONFIG[k])) ov[k] = cfg[k];
+      if (JSON.stringify(cfg[k]) === JSON.stringify(cfgBaseline[k])) return;   // 这次没动过这个键
+      if (cfg[k] === undefined) return;                                        // 该键已被移除 → 不提交
+      // names 是唯一不参与占位名替换的键（见 __deriveConfig）；
+      // 其余键拿到的是"已派生"的值（待定A/待定B 已换成真名），直接写盘会把
+      // 占位名永久写死 —— 以后改名，这些地方就再也不跟着同步了。写回前先反向冻结。
+      ov[k] = (k === "names") ? cfg[k] : refreezeValue(cfg[k], DEFAULT_CONFIG[k], curNames);
+    });
+    // 与默认值完全相同的键不必存（留空即回退到默认值）
+    // 例外：解锁密码必须显式提交 —— 服务端把"缺 password 键"当异常并沿用
+    // 磁盘现值，若这里按默认值省略，"把密码改回默认值"就会静默不生效。
+    Object.keys(ov).forEach(function (k) {
+      if (k === "password") return;
+      if (JSON.stringify(ov[k]) === JSON.stringify(DEFAULT_CONFIG[k])) delete ov[k];
     });
     return ov;
   }
@@ -605,17 +800,30 @@ love_session();
       }
     });
     if (problems.length) {
-      toast("无法保存：" + problems[0] + (problems.length > 1 ? "（还有 " + (problems.length - 1) + " 处问题，逐条修正）" : ""), true);
+      toast("无法保存：" + problems[0] + (problems.length > 1 ? "（还有 " + (problems.length - 1) + " 处问题，逐条修正）" : ""), "err");
       return;
     }
     btn.disabled = true; btn.textContent = "保存中…";
+    setState("dirty", "保存中…");
     api("save_config", { overrides: collectOverrides() })
       .then(function (j) {
-        dirty = false;
-        toast("✅ 已保存（共 " + j.saved.length + " 项），前台页面刷新即可看到");
+        var msg = "已保存（共 " + j.saved.length + " 项），前台页面刷新即可看到";
+        var partial = (j.rejected && j.rejected.length) || (j.skipped && Object.keys(j.skipped).length);
+        if (j.rejected && j.rejected.length) {
+          msg += "；以下 " + j.rejected.length + " 项格式不对已忽略：" + j.rejected.join("、");
+        }
+        msg += skippedNote(j);
+        if (j.warning) { msg += "；⚠️ " + j.warning; }
+        clearDirty("✅ 已保存（" + nowHM() + "）");
+        toast(msg, (partial || j.warning) ? "warn" : "ok");
+        flashSaveBtn("✅ 已保存", 1600);
       })
-      .catch(function (e) { toast("保存失败：" + e.message, true); })
-      .finally(function () { btn.disabled = false; btn.textContent = "💾 保存全部修改"; });
+      .catch(function (e) {
+        setState("err", "⚠️ 保存失败");
+        toast("保存失败：" + e.message, "err");
+        flashSaveBtn("⚠️ 保存失败", 2500);
+      })
+      .finally(function () { btn.disabled = false; });
   });
 
   /* ---------------- 页签 ---------------- */
@@ -625,6 +833,10 @@ love_session();
       document.querySelectorAll(".tab").forEach(function (t) { t.classList.remove("active"); });
       btn.classList.add("active");
       document.querySelector('[data-panel="' + btn.dataset.tab + '"]').classList.add("active");
+      // 切到「账号设置」时刷新 JSON 预览：它只在 renderAll() 里写过一次，表单改动
+      // 后不同步会让"与表单实时联动"这句话落空。放在页签切换而不是 markDirty()，
+      // 是为了不打断正在这个文本域里输入的人。
+      if (btn.dataset.tab === "account") $("rawJson").value = JSON.stringify(cfg, null, 2);
     });
   });
 
@@ -688,6 +900,8 @@ love_session();
       renderVisitorPhotos(j.data.photos || []);
       renderCT(j.data.messages || [], "ctMessages", "留言", "messages");
       renderCT(j.data.letters || [], "ctLetters", "情书", "letters");
+      renderCapsules(j.data.capsules || []);
+      renderDaily(j.data.daily || []);
       renderCompat(j.data.compat || []);
     }).catch(function () { $("visitorPhotos").innerHTML = '<div class="msg err">加载失败</div>'; });
   }
@@ -737,7 +951,9 @@ love_session();
       tr.innerHTML = "";
       var td1 = document.createElement("td");
       var img = document.createElement("img");
-      img.className = "mini-thumb"; img.src = p.src; img.loading = "lazy";
+      img.className = "mini-thumb";
+      img.src = window.lovePhotoUrl ? window.lovePhotoUrl(p.src) : p.src;
+      img.loading = "lazy";
       td1.appendChild(img);
       var td2 = document.createElement("td");
       td2.innerHTML = escHtml(p.cap || "—") + '<div class="muted">' + fmtTs(p.ts) + "</div>";
@@ -810,8 +1026,28 @@ love_session();
       try { backup = JSON.parse(reader.result); } catch (e) { toast("备份文件解析失败", true); return; }
       if (!backup || typeof backup !== "object" || !("config" in backup)) { toast("不是有效的备份文件", true); return; }
       if (!confirm("确定用这个备份覆盖恢复全部数据？此操作不可撤销。")) return;
-      api("restore", { backup: backup })
-        .then(function () { toast("✅ 恢复完成"); })
+      var alsoAdmin = confirm(
+        "备份里还含管理员账号与密码。\n\n" +
+        "点「确定」= 同时恢复账号密码（如果你忘了旧密码会把自己锁在外面）；\n" +
+        "点「取消」= 保留当前账号密码，只恢复内容。"
+      );
+      api("restore", { backup: backup, restore_admin: alsoAdmin })
+        .then(function (j) {
+          var msg = "✅ 恢复完成";
+          if (j.missing_photos) {
+            msg += "；" + j.missing_photos + " 张照片的图片文件不在服务器上已跳过（备份只存记录，不存图片文件）";
+          }
+          if (j.admin_skipped) msg += "；管理员账号密码未改动";
+          if (j.compat_dropped) {
+            msg += "；默契度记录里有 " + j.compat_dropped + " 条结构不合法已丢弃（避免整站脚本被畸形数据打断）";
+          }
+          if (j.rejected && j.rejected.length) {
+            msg += "；以下 " + j.rejected.length + " 项配置格式不对已忽略：" + j.rejected.join("、");
+          }
+          msg += skippedNote(j);
+          if (j.warning) msg += "；⚠️ " + j.warning;
+          toast(msg, !!j.warning);
+        })
         .catch(function (e) { toast("恢复失败：" + e.message, true); });
     };
     reader.readAsText(file);
@@ -837,11 +1073,100 @@ love_session();
     var allowed = Object.keys(DEFAULT_CONFIG);
     var bad = Object.keys(parsed).filter(function (k) { return allowed.indexOf(k) === -1; });
     if (bad.length) { toast("包含未知键：" + bad.join(", "), true); return; }
+    // 取"当前生效的解锁密码"：cfg 是 bootApp 从 get_config 拿到的真实配置；
+    // 全局 CONFIG.password 只是内置默认值（密码从不下发给前端，见 api/config.php）
+    var curPw = (typeof cfg.password === "string") ? cfg.password : "";
     cfg = parsed;
+    baseOverrides = {};    // 显式整份替换 → 以这份 JSON 为准
+    cfgBaseline = {};
+    /* 缺 password 键就补回当前值：必须区分「键缺失=没写」与「值为空串=关闭门禁」。
+       不补的话保存时该键不会被提交，服务端会沿用磁盘旧值（门禁不会误关），
+       但表单里显示的值与实际不一致，容易让人误判。 */
+    var pwFilled = false;
+    if (!("password" in cfg)) { cfg.password = curPw; pwFilled = true; }
     renderAll();
     markDirty();
-    toast("已载入表单，请检查后保存");
+    toast(pwFilled ? "已载入表单（原 JSON 缺少 password 键，已补回当前解锁密码）" : "已载入表单，请检查后保存");
   });
+
+  /* 时间胶囊：管理员能看到未开启的正文（前台在开启日前拿不到） */
+  function renderCapsules(list) {
+    var box = $("ctCapsules");
+    if (!box) return;
+    box.innerHTML = "";
+    if (!list.length) { box.innerHTML = '<div class="muted">还没有时间胶囊</div>'; return; }
+    var now = new Date();
+    var todayStr = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") + "-" + String(now.getDate()).padStart(2, "0");
+    var table = document.createElement("table");
+    table.className = "ct";
+    list.slice().sort(function (a, b) { return String(a.openAt).localeCompare(String(b.openAt)); }).forEach(function (c) {
+      var locked = String(c.openAt || "") > todayStr;
+      var tr = document.createElement("tr");
+      var td1 = document.createElement("td");
+      td1.innerHTML =
+        (locked ? "🔒 " : "📖 ") + "<b>" + escHtml(c.title || "") + "</b>" +
+        ' <span class="muted">开启于 ' + escHtml(c.openAt || "") + (locked ? "（还没到）" : "（已开启）") + "</span>" +
+        '<div class="muted" style="white-space:pre-wrap">' + escHtml(c.body || "") + "</div>" +
+        (c.sign ? '<div class="muted">—— ' + escHtml(c.sign) + "</div>" : "");
+      var td2 = document.createElement("td");
+      td2.className = "muted"; td2.textContent = fmtTs(c.ts);
+      var td3 = document.createElement("td");
+      var del = document.createElement("button");
+      del.className = "btn ghost"; del.textContent = "删除";
+      del.addEventListener("click", function () {
+        if (!confirm("删除这个时间胶囊？")) return;
+        api("content_delete", { kind: "capsules", uid: c.uid })
+          .then(function () { loadContent(); toast("已删除"); })
+          .catch(function (e) { toast("删除失败：" + e.message, true); });
+      });
+      td3.appendChild(del);
+      tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3);
+      table.appendChild(tr);
+    });
+    box.appendChild(table);
+  }
+
+  /* 每日一问：按日期列出双方回答（题目由 dayNo 在前端解析） */
+  function renderDaily(list) {
+    var box = $("ctDaily");
+    if (!box) return;
+    box.innerHTML = "";
+    if (!list.length) { box.innerHTML = '<div class="muted">还没有回答记录</div>'; return; }
+    var qs = (cfg && cfg.dailyQuestions) || [];
+    var table = document.createElement("table");
+    table.className = "ct";
+    list.forEach(function (d) {
+      var tr = document.createElement("tr");
+      var td1 = document.createElement("td");
+      var qText = "";
+      if (qs.length) {
+        var i = ((d.dayNo % qs.length) + qs.length) % qs.length;
+        qText = String(qs[i] || "");
+      }
+      var html = "<b>" + escHtml(d.date) + "</b>";
+      if (qText) html += ' <span class="muted">' + escHtml(qText) + "</span>";
+      (d.answers || []).forEach(function (a, i) {
+        html += '<div class="muted" style="white-space:pre-wrap">答案 ' + (i + 1) + "：" + escHtml(a.text) + "</div>";
+      });
+      td1.innerHTML = html;
+      var td2 = document.createElement("td");
+      td2.className = "muted";
+      td2.textContent = (d.answers && d.answers[0]) ? fmtTs(d.answers[0].ts) : "";
+      var td3 = document.createElement("td");
+      var del = document.createElement("button");
+      del.className = "btn ghost"; del.textContent = "删除";
+      del.addEventListener("click", function () {
+        if (!confirm("删除 " + d.date + " 的回答？")) return;
+        api("content_delete", { kind: "daily", uid: d.date })
+          .then(function () { loadContent(); toast("已删除"); })
+          .catch(function (e) { toast("删除失败：" + e.message, true); });
+      });
+      td3.appendChild(del);
+      tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3);
+      table.appendChild(tr);
+    });
+    box.appendChild(table);
+  }
 
   /* ---------------- 初始化 ---------------- */
   function renderAll() {
@@ -855,20 +1180,49 @@ love_session();
     buildList("ed_quiz", "quiz", FIELD_DEFS.quiz);
     buildList("ed_compatQuiz", "compatQuiz", FIELD_DEFS.compatQuiz);
     buildList("ed_truthDares", "truthDares", null);
+  buildList("ed_dailyQuestions", "dailyQuestions", null);
     buildList("ed_gallery", "gallery", FIELD_DEFS.gallery);
     $("rawJson").value = JSON.stringify(cfg, null, 2);
   }
 
   function bootApp() {
     api("get_config", {}).then(function (j) {
-      cfg = deepClone(CONFIG);
-      Object.keys(j.overrides || {}).forEach(function (k) { cfg[k] = deepClone(j.overrides[k]); });
-      if (window.__deriveConfig) cfg = window.__deriveConfig(cfg);  // 重新派生: 名字同步 + 日期自动计算
+      var ovs = (j.overrides && typeof j.overrides === "object") ? j.overrides : {};
+      var names = (ovs.names && typeof ovs.names === "object")
+        ? { boy: ovs.names.boy || DEFAULT_CONFIG.names.boy, girl: ovs.names.girl || DEFAULT_CONFIG.names.girl }
+        : DEFAULT_CONFIG.names;
+
+      // 历史遗留修复：config.json 里若已把「待定A/待定B」写死成真名，先还原成占位名，
+      // 这样以后改名仍能全站同步（显示效果不变，只是不再写死）
+      var repaired = {};
+      Object.keys(ovs).forEach(function (k) {
+        if (k === "names" || !(k in DEFAULT_CONFIG)) return;
+        var fixed = refreezeValue(ovs[k], DEFAULT_CONFIG[k], names);
+        if (JSON.stringify(fixed) !== JSON.stringify(ovs[k])) repaired[k] = fixed;
+      });
+
+      // 以"服务器已有覆盖（修复后）"为底，派生出一份用于显示的工作副本
+      var merged = deepClone(DEFAULT_CONFIG);
+      Object.keys(ovs).forEach(function (k) { if (k in DEFAULT_CONFIG) merged[k] = deepClone(ovs[k]); });
+      Object.keys(repaired).forEach(function (k) { merged[k] = deepClone(repaired[k]); });
+
+      baseOverrides = {};
+      Object.keys(merged).forEach(function (k) {
+        if (JSON.stringify(merged[k]) !== JSON.stringify(DEFAULT_CONFIG[k])) baseOverrides[k] = deepClone(merged[k]);
+      });
+
+      cfg = window.__deriveConfig ? window.__deriveConfig(merged) : merged;
+      cfgBaseline = deepClone(cfg);
+
       $("loginView").style.display = "none";
       $("appView").style.display = "block";
       document.querySelector('#tabs button[data-tab="basic"]').click();
       renderAll();
       loadContent();
+      if (Object.keys(repaired).length) {
+        markDirty();
+        toast("检测到历史上被写死的名字，点一次「保存全部修改」即可修复同步", "warn");
+      }
     }).catch(function (e) { toast("加载配置失败：" + e.message, true); });
   }
 
