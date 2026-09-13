@@ -380,8 +380,6 @@ switch ($action) {
             $ok = $ok && admin_replace('daily.json', $daily);
         }
         /* 管理员账号默认不覆盖：恢复一份旧备份就把密码换回旧的，
-           是很容易把人锁在门外的坑，必须显式确认（restore_admin=true）。 */
-        /* 管理员账号默认不覆盖：恢复一份旧备份就把密码换回旧的，
            是很容易把人锁在门外的坑，必须显式确认（restore_admin=true）。
            两个键都必须是**非空字符串**：旧实现只做 !empty，而 !empty(数组)
            也为真 —— 备份文件损坏/被手工改过时，数组型的 pass_hash 会原样
