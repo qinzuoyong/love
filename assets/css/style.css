@@ -18,6 +18,10 @@
   --shadow:      0 12px 32px rgba(214, 51, 108, 0.14);
   --shadow-sm:   0 4px 14px rgba(214, 51, 108, 0.10);
   --radius:      20px;
+  --t-fast:      150ms;   /* 动效令牌：微交互统一时长/缓动 */
+  --t-mid:       250ms;
+  --t-slow:      400ms;
+  --ease:        cubic-bezier(0.2, 0.7, 0.3, 1);
   --grad:        linear-gradient(135deg, #ff9a9e 0%, #fecfef 55%, #fbd2e0 100%);
   --grad-btn:    linear-gradient(135deg, #ff8aab 0%, #f06292 55%, #d81b60 100%);
   --font:        "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
@@ -483,6 +487,13 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 }
 .photo:hover .cap { opacity: 1; }
 
+/* 触屏设备没有 hover：删除按钮与照片说明必须常显，
+   否则手机上它们永远不可见 —— 照片删除功能在移动端等于不可用。 */
+@media (hover: none) {
+  .photo .photo-del { opacity: 1; }
+  .photo .cap { opacity: 1; }
+}
+
 /* 灯箱 */
 #lightbox {
   position: fixed;
@@ -556,10 +567,14 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   left: 50%;
   top: 0; bottom: 0;
   width: 3px;
-  transform: translateX(-50%);
+  /* 进视口时从上往下"画"出来（timeline.js 加 .drawn） */
+  transform: translateX(-50%) scaleY(0);
+  transform-origin: top center;
+  transition: transform 1.1s var(--ease, ease);
   background: linear-gradient(var(--rose-soft), var(--rose), var(--lavender));
   border-radius: 3px;
 }
+.timeline.drawn::before { transform: translateX(-50%) scaleY(1); }
 .tl-item {
   position: relative;
   width: 50%;
@@ -1120,6 +1135,40 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 }
 #musicBtn:hover { transform: scale(1.1) rotate(8deg); }
 #musicBtn.off { opacity: 0.75; }
+/* 自动播放被浏览器拦下时的提示: 按钮呼吸, 表示"点一下就能响"
+   (系统开了"减弱动态效果"时会被文件末尾的 prefers-reduced-motion 块统一关掉) */
+#musicBtn.wake { animation: musicWake 1.7s ease-in-out infinite; }
+@keyframes musicWake {
+  0%, 100% { transform: scale(1); box-shadow: var(--shadow); }
+  50% { transform: scale(1.16); box-shadow: 0 0 0 10px rgba(240, 98, 146, 0.16); }
+}
+/* 正在等缓冲(整曲近 1MB, 慢主机上要等一会儿): 轻轻闪一下表示"在加载"，
+   与 .wake 的"点一下就能响"区分开 */
+#musicBtn.loading { animation: musicLoad 1.5s ease-in-out infinite; }
+@keyframes musicLoad {
+  0%, 100% { opacity: 0.5; transform: scale(0.94); }
+  50% { opacity: 1; transform: scale(1.03); }
+}
+/* 自动播放被拦下时的常驻提示(贴在音乐按钮左侧, 出声即消失)。
+   pointer-events:none 是必须的: 否则它会挡住"点一下页面任意处"的那一下。 */
+.music-hint {
+  position: fixed;
+  right: 84px; bottom: 30px;
+  z-index: 151;
+  padding: 7px 13px;
+  border-radius: 999px;
+  background: var(--grad-btn);
+  color: #fff;
+  font-size: 0.78rem;
+  white-space: nowrap;
+  box-shadow: var(--shadow);
+  pointer-events: none;
+  animation: hintFloat 1.8s ease-in-out infinite;
+}
+@keyframes hintFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
 
 #topBtn {
   position: fixed;
@@ -1155,7 +1204,10 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   opacity: 0;
   pointer-events: none;
   transition: all 0.35s ease;
-  white-space: nowrap;
+  /* 长文案（例如接口返回的错误信息）不能 nowrap，否则会直接溢出屏幕 */
+  max-width: min(92vw, 560px);
+  text-align: center;
+  word-break: break-word;
 }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
@@ -1175,11 +1227,6 @@ footer .foot-heart {
   animation: heartbeat 1.4s ease-in-out infinite;
 }
 footer .brand-line { margin-bottom: 6px; font-weight: 600; color: var(--ink); }
-footer .music-credit {
-  margin-top: 6px;
-  font-size: 0.76rem;
-  opacity: 0.62;
-}
 
 /* ---------- 主页: 恋爱进度环 + 回忆闪现 ---------- */
 .progress-row {
@@ -1210,7 +1257,13 @@ footer .music-credit {
 }
 .ring-fill {
   fill: none;
-  stroke: var(--grad-btn);
+  /* ⚠️ stroke 在多数浏览器里不接受 CSS 渐变函数（linear-gradient()）：
+     写 stroke: var(--grad-btn) 会让整条声明被判无效、填充环完全不绘制
+     （只剩浅色底环）。改用真实 SVG 渐变后还有第二个坑：url(#ringGrad) 写在
+     "外部样式表"里时，部分浏览器会按样式表基准去解析这个 fragment，取不到
+     home.html 内联 <defs> 里的那个渐变 —— 填充环照样不绘制。所以它改由
+     <circle> 上的 SVG 呈现属性 stroke="url(#ringGrad)" 指定（呈现属性按文档
+     解析，稳定），这里只留几何与动效。 */
   stroke-width: 9;
   stroke-linecap: round;
   transition: stroke-dashoffset 0.2s linear;
@@ -1410,4 +1463,236 @@ footer .music-credit {
 
   .progress-row { grid-template-columns: 1fr; }
   .tl-year { top: 56px; }
+}
+
+/* ============================================================
+   纪念日 → 手机日历（.ics 导出）
+   ============================================================ */
+.ics-bar {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  justify-content: center; margin: 4px 0 26px;
+}
+.ics-bar .btn { font-size: 0.95rem; }
+.anniv-ics { margin-top: 14px; padding: 8px 14px; font-size: 0.82rem; }
+.ics-steps {
+  margin: 0 0 14px 1.1em; padding: 0;
+  color: var(--ink); font-size: 0.88rem; line-height: 1.9;
+}
+.ics-steps li { margin-bottom: 2px; }
+.ics-steps b { color: var(--rose-deep); }
+@media (max-width: 700px) {
+  .ics-bar .btn { width: 100%; justify-content: center; }
+}
+
+/* ============================================================
+   纪念卡（Canvas 生成）
+   ============================================================ */
+.card-modal { max-width: 560px; max-height: 92vh; overflow-y: auto; }
+.card-preview {
+  display: block; width: 100%; max-width: 300px;
+  margin: 4px auto 18px; border-radius: 16px; box-shadow: var(--shadow);
+}
+
+/* ============================================================
+   时间胶囊
+   ============================================================ */
+.capsule-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 18px;
+}
+.capsule {
+  padding: 22px 20px; border-radius: var(--radius);
+  display: flex; flex-direction: column;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+.capsule:hover { transform: translateY(-4px); box-shadow: var(--shadow); }
+.capsule.locked { background: linear-gradient(160deg, rgba(255,255,255,0.88), rgba(255,238,245,0.92)); }
+.capsule-badge { font-size: 0.78rem; color: var(--rose-deep); letter-spacing: 0.04em; margin-bottom: 8px; }
+.capsule h3 { color: var(--ink); font-size: 1.05rem; margin: 0 0 8px; }
+.capsule-date { color: var(--ink-soft); font-size: 0.82rem; margin-bottom: 10px; }
+.capsule-date b { color: var(--rose-deep); font-size: 1.05rem; }
+.capsule-hint { color: var(--ink-soft); font-size: 0.8rem; opacity: 0.85; }
+.capsule-body { color: var(--ink); font-size: 0.92rem; line-height: 1.9; white-space: pre-wrap; }
+.capsule-sign { margin-top: 12px; text-align: right; color: var(--rose-deep); font-size: 0.85rem; }
+.capsule-del { margin-top: 14px; align-self: flex-start; padding: 6px 14px; font-size: 0.78rem; }
+.capsule-empty { text-align: center; color: var(--ink-soft); padding: 28px 0; }
+.field-label { display: block; font-size: 0.82rem; color: var(--ink-soft); margin: 4px 0 6px; }
+
+/* ============================================================
+   每日一问
+   ============================================================ */
+.daily-card {
+  max-width: 720px; margin: 0 auto;
+  padding: 26px 24px; border-radius: var(--radius);
+}
+.daily-q { font-size: 1.08rem; color: var(--ink); line-height: 1.9; margin-bottom: 18px; }
+.daily-tag {
+  display: inline-block; margin-right: 8px; padding: 2px 10px;
+  border-radius: 999px; background: rgba(240, 98, 146, 0.12);
+  color: var(--rose-deep); font-size: 0.72rem; vertical-align: middle;
+}
+.daily-input { width: 100%; }
+.daily-actions { margin-top: 12px; display: flex; justify-content: flex-end; }
+.daily-answer {
+  padding: 12px 14px; border-radius: 14px; margin-bottom: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(240, 98, 146, 0.14);
+  line-height: 1.85; color: var(--ink);
+}
+.daily-answer.partner { background: rgba(255, 238, 245, 0.9); }
+.daily-who {
+  display: inline-block; margin-right: 8px;
+  color: var(--rose-deep); font-weight: 600; font-size: 0.82rem;
+}
+.daily-wait { color: var(--ink-soft); font-size: 0.85rem; }
+.daily-note { margin-top: 8px; color: var(--ink-soft); font-size: 0.78rem; opacity: 0.85; }
+
+/* ============================================================
+   滚动进度条 + 主题切换按钮
+   ============================================================ */
+.scroll-bar {
+  position: fixed; top: 0; left: 0; z-index: 130;
+  width: 100%; height: 3px;
+  transform: scaleX(0); transform-origin: 0 50%;
+  background: var(--grad-btn);
+  will-change: transform;
+  pointer-events: none;
+}
+.theme-btn {
+  width: 42px; height: 42px;
+  border-radius: 12px;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--rose-deep);
+  background: rgba(255, 255, 255, 0.8);
+  box-shadow: var(--shadow-sm);
+  margin-right: 8px;
+  transition: transform 0.2s ease, background 0.25s ease;
+}
+.theme-btn:hover { transform: translateY(-2px) scale(1.05); }
+.theme-btn:active { transform: scale(0.96); }
+
+/* ============================================================
+   暗色主题
+   （assets/js/theme.js 在 <head> 里先设好 data-theme，避免首屏白闪）
+   ============================================================ */
+:root[data-theme="dark"] {
+  --rose:        #ff8fb4;
+  --rose-deep:   #ff6f9c;
+  --rose-soft:   #6d3b52;
+  --peach:       #ffb59a;
+  --lavender:    #c4b0e8;
+  --gold:        #ffcc66;
+  --bg:          #14101a;
+  --card:        rgba(42, 31, 42, 0.72);
+  --glass-border:rgba(255, 255, 255, 0.12);
+  --ink:         #f2e6ec;
+  --ink-soft:    #b9a3b0;
+  --shadow:      0 12px 32px rgba(0, 0, 0, 0.5);
+  --shadow-sm:   0 4px 14px rgba(0, 0, 0, 0.42);
+  --grad:        linear-gradient(135deg, #3b2431 0%, #2a1c28 55%, #241a24 100%);
+  --grad-btn:    linear-gradient(135deg, #ff8fb4 0%, #ff6f9c 55%, #e04a7d 100%);
+}
+:root[data-theme="dark"] body::before {
+  background: radial-gradient(circle, rgba(140, 60, 95, 0.5) 0%, transparent 70%);
+}
+:root[data-theme="dark"] body::after {
+  background: radial-gradient(circle, rgba(80, 55, 110, 0.45) 0%, transparent 70%);
+}
+:root[data-theme="dark"] #nav {
+  background: rgba(24, 18, 24, 0.82);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+:root[data-theme="dark"] #nav.scrolled { box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45); }
+:root[data-theme="dark"] #navToggle,
+:root[data-theme="dark"] .theme-btn { background: rgba(255, 255, 255, 0.08); color: var(--ink); }
+:root[data-theme="dark"] .hero-greeting,
+:root[data-theme="dark"] .rotator .msg,
+:root[data-theme="dark"] .chip,
+:root[data-theme="dark"] .msg-item,
+:root[data-theme="dark"] .quiz-opt,
+:root[data-theme="dark"] .compat-hist-row,
+:root[data-theme="dark"] .daily-answer,
+:root[data-theme="dark"] .capsule.locked {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+:root[data-theme="dark"] .field,
+:root[data-theme="dark"] .unlock-card input {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--ink);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+:root[data-theme="dark"] .field::placeholder,
+:root[data-theme="dark"] .unlock-card input::placeholder { color: var(--ink-soft); }
+:root[data-theme="dark"] .env-front {
+  background: linear-gradient(150deg, #3a2632 0%, #2b1e28 100%);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+:root[data-theme="dark"] .env-front h3 { color: var(--rose); }
+:root[data-theme="dark"] .env-back {
+  background: linear-gradient(160deg, #2b1f2b 0%, #221820 100%);
+  border-color: rgba(255, 111, 156, 0.28);
+}
+:root[data-theme="dark"] .tl-item .dot { border-color: #14101a; }
+:root[data-theme="dark"] #topBtn { background: rgba(255, 255, 255, 0.1); color: var(--ink); }
+:root[data-theme="dark"] footer { background: rgba(255, 255, 255, 0.04); }
+:root[data-theme="dark"] .lb-btn { background: rgba(255, 255, 255, 0.16); }
+:root[data-theme="dark"] .photo .photo-del { background: rgba(0, 0, 0, 0.55); }
+:root[data-theme="dark"] .card-preview { box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6); }
+:root[data-theme="dark"] .tl-year h2 { background: rgba(30, 22, 30, 0.92); color: var(--rose); }
+:root[data-theme="dark"] .tl-item.tl-future .tl-card {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(249, 168, 37, 0.5);
+}
+:root[data-theme="dark"] .tl-item.tl-future .tl-date { background: rgba(249, 168, 37, 0.2); color: var(--gold); }
+
+/* 这几个元素原本是硬编码的浅色背景，未纳入暗色覆盖：
+   暗色下浅粉底 + 近白/亮粉文字，对比度极低、几乎读不出来。 */
+:root[data-theme="dark"] .truth-card {
+  background: linear-gradient(150deg, #3a2632 0%, #2b1e28 100%);
+  border-color: rgba(255, 111, 156, 0.42);
+  color: var(--rose);
+}
+:root[data-theme="dark"] .today-banner {
+  background: linear-gradient(135deg, #3b2431, #2a1c28);
+  border-color: rgba(255, 111, 156, 0.35);
+  color: var(--rose);
+}
+:root[data-theme="dark"] .unlock-body {
+  background: linear-gradient(160deg, #14101a 0%, #1c1420 50%, #17111c 100%);
+}
+
+/* 主题切换时的柔和过渡（只在用户主动切换时加，避免首屏动画） */
+html.theming,
+html.theming body,
+html.theming .glass,
+html.theming #nav,
+html.theming footer,
+html.theming .btn {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+/* ============================================================
+   无障碍：系统开启"减弱动态效果"时，关掉持续动画
+   （参考 MDN / CSS-Tricks / Smashing 的通行做法）
+   ============================================================ */
+/* 键盘导航的焦点环：只在用 Tab 聚焦时显示（:focus-visible），
+   鼠标点击不弹焦点环，键盘用户也不会找不到位置。 */
+:focus-visible {
+  outline: 2px solid var(--rose);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .brand .heart { animation: none !important; }
+  .reveal { opacity: 1 !important; transform: none !important; }
+  .timeline::before { transform: translateX(-50%) scaleY(1) !important; }
+  .scroll-bar { display: none; }
 }
