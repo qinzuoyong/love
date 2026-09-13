@@ -22,6 +22,8 @@
       const now = new Date();
       // 年周期锚点 = 第一个重复型(非农历/非一次性)纪念日的月-日
       // 农历条目排除: 农历月日对应的公历每年漂移, 不能当固定锚点
+      // 「今天」按零点算: 与倒计时的"就是今天"口径一致(见下面的 cycleEnd 比较)
+      const today0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       let anchorMD = null;
       (CONFIG.anniversaries || []).forEach((item) => {
         if (item.type === "once" || item.lunar) return;
@@ -33,34 +35,42 @@
         if (m >= 1 && m <= 12 && d >= 1 && d <= 31 && !anchorMD) anchorMD = [m, d];
       });
       // 周期终点 = 最近的未来锚点(无锚点则用"在一起周年"), 起点 = 它的一年前
+      /* 比较用"今天零点"而不是"此刻": 纪念日当天 cycleEnd <= now 会命中，于是
+         当场把周期推到明年 —— 环显示约 0%、"距离下次还有 365 天"，而同一页的
+         倒计时横幅正写着"就是今天！"。 */
       let cycleEnd;
       if (anchorMD) {
         cycleEnd = new Date(now.getFullYear(), +anchorMD[0] - 1, +anchorMD[1]);
-        if (cycleEnd <= now) cycleEnd = new Date(now.getFullYear() + 1, +anchorMD[0] - 1, +anchorMD[1]);
+        if (cycleEnd < today0) cycleEnd = new Date(now.getFullYear() + 1, +anchorMD[0] - 1, +anchorMD[1]);
       } else {
         cycleEnd = new Date(now.getFullYear(), start.getMonth(), start.getDate());
-        if (cycleEnd <= now) cycleEnd = new Date(now.getFullYear() + 1, start.getMonth(), start.getDate());
+        if (cycleEnd < today0) cycleEnd = new Date(now.getFullYear() + 1, start.getMonth(), start.getDate());
       }
       const cycleStart = new Date(cycleEnd.getFullYear() - 1, cycleEnd.getMonth(), cycleEnd.getDate());
       const total = cycleEnd - cycleStart;
       const done = now - cycleStart;
       const pct = Math.min(100, Math.max(0, (done / total) * 100));
-      // 与卡片倒计时同口径(floor), 保证环文与倒计时数字一致
-      const daysLeft = Math.max(0, Math.floor((cycleEnd - now) / 86400000));
+      // 天数同样按零点相减，避免"还有 0 天"与"就是今天"两种说法并存
+      const daysLeft = Math.max(0, Math.round((cycleEnd - today0) / 86400000));
 
       const C = 2 * Math.PI * 54; // r=54 周长
       ringFill.style.strokeDasharray = C;
-      // 数字动画: 900ms 从 0 滚到目标百分比
+      // 数字动画: 900ms 从 0 滚到目标百分比（开了"减少动态效果"直接出终值）
       const target = Math.round(pct * 10) / 10;
-      const t0 = Date.now();
-      const dur = 900;
-      (function anim() {
-        const k = Math.min(1, (Date.now() - t0) / dur);
-        const cur = target * (1 - Math.pow(1 - k, 3)); // ease-out
-        ringFill.style.strokeDashoffset = C * (1 - cur / 100);
-        if (pctEl) pctEl.textContent = cur.toFixed(1) + "%";
-        if (k < 1) animLoop(anim);
-      })();
+      if (window.__loveReduceMotion) {
+        ringFill.style.strokeDashoffset = C * (1 - target / 100);
+        if (pctEl) pctEl.textContent = target.toFixed(1) + "%";
+      } else {
+        const t0 = Date.now();
+        const dur = 900;
+        (function anim() {
+          const k = Math.min(1, (Date.now() - t0) / dur);
+          const cur = target * (1 - Math.pow(1 - k, 3)); // ease-out
+          ringFill.style.strokeDashoffset = C * (1 - cur / 100);
+          if (pctEl) pctEl.textContent = cur.toFixed(1) + "%";
+          if (k < 1) animLoop(anim);
+        })();
+      }
       if (txtEl) {
         txtEl.innerHTML = "这一轮纪念日周期已走过 <b>" + pct.toFixed(1) + "%</b> · 距离下次还有 <b>" + daysLeft + "</b> 天";
       }
@@ -75,21 +85,24 @@
     if (photos.length) {
       // 首张用"按日期固定"选一张(每天不同), 之后随机不重复
       const doy = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0)) / 86400000);
-      function show(idx, first) {
+      function show(idx) {
         const p = photos[idx];
         memImg.classList.remove("mem-in");
-        memImg.onload = () => { if (!first) memImg.classList.add("mem-in"); };
-        memImg.src = p.src;
+        // 首图也要淡入（旧代码 if (!first) 让首图永远停在 opacity:0，
+        // 每次进首页前 5 秒只能看到空框）
+        memImg.onload = () => memImg.classList.add("mem-in");
+        memImg.onerror = () => memImg.classList.add("mem-in");
+        memImg.src = (window.lovePhotoUrl ? window.lovePhotoUrl(p.src) : p.src);
         if (memCap) memCap.textContent = p.cap || "";
         // 预加载下一张(不重复当前), 返回给下轮使用; 只剩 1 张时没有"下一张"可换
         let nxt = idx;
         if (photos.length > 1) {
           do { nxt = (Math.random() * photos.length) | 0; } while (nxt === idx);
-          new Image().src = photos[nxt].src;
+          new Image().src = (window.lovePhotoUrl ? window.lovePhotoUrl(photos[nxt].src) : photos[nxt].src);
         }
         return nxt;
       }
-      let cur = show(doy % photos.length, true);
+      let cur = show(doy % photos.length);
       setInterval(() => { cur = show(cur); }, 5000);
     } else {
       const card = memImg.closest(".memory-card");

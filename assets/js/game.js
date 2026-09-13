@@ -84,15 +84,26 @@
     else if (pct >= 40)    { verdict = "看来还需要多一点交流呢"; emoji = "🤔"; }
     else                   { verdict = "快去多陪陪 TA 吧！"; emoji = "💪"; }
 
-    // 历史最高分
-    let best = 0;
-    try { best = parseInt(localStorage.getItem(BEST_KEY), 10) || 0; } catch (e) {}
+    // 历史最高分：连"当时的总题数"一起存，否则改题库后会显示成 "8 / 3"
+    let best = { s: 0, t: 0 };
+    try {
+      const raw = localStorage.getItem(BEST_KEY);
+      if (raw) {
+        if (/^\d+$/.test(raw)) {
+          best = { s: parseInt(raw, 10) || 0, t: 0 };   // 旧格式：只存了答对数，不知道当时题数
+        } else {
+          const o = JSON.parse(raw) || {};
+          best = { s: parseInt(o.s, 10) || 0, t: parseInt(o.t, 10) || 0 };
+        }
+      }
+    } catch (e) {}
     let newRecord = false;
-    if (score > best) {
-      best = score;
+    if (score > best.s) {
+      best = { s: score, t: total };
       newRecord = true;
-      try { localStorage.setItem(BEST_KEY, String(best)); } catch (e) {}
+      try { localStorage.setItem(BEST_KEY, JSON.stringify(best)); } catch (e) {}
     }
+    const bestLabel = best.t > 0 ? best.s + " / " + best.t : best.s + " 题";
 
     quesEl.textContent = emoji + " 考验结束！";
     optsEl.innerHTML = "";
@@ -104,7 +115,7 @@
     verdictEl.className = "quiz-verdict";
     verdictEl.innerHTML =
       verdict + (newRecord ? '<br><span class="quiz-record">🏆 新纪录！</span>' : "") +
-      '<br><span class="quiz-best">历史最高：' + best + " / " + total + "</span>";
+      '<br><span class="quiz-best">历史最高：' + bestLabel + "</span>";
 
     optsEl.appendChild(scoreEl);
     optsEl.appendChild(verdictEl);
