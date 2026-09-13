@@ -123,6 +123,24 @@
     return getBitInt(lunar_month_days[lunarYear - 1887], 4, 13);
   }
 
+  /** 某农历月实际有多少天(29/30)；该年没有这个月(如闰月不存在)时返回 0。
+      用于把"三十"夹到只有 29 天的月份，避免换算成下月初一 */
+  function monthDays(lunarYear, lunarMonth, isLeap) {
+    if (lunarYear < 1887 || lunarYear > 2100) return 0;
+    if (lunarMonth < 1 || lunarMonth > 12) return 0;
+    const days = lunar_month_days[lunarYear - 1887];
+    const leap = getBitInt(days, 4, 13);
+    let idx;
+    if (isLeap) {
+      if (leap !== lunarMonth) return 0;
+      idx = leap;                                  // 闰月插在第 leap 个正月份之后
+    } else {
+      idx = lunarMonth - 1;
+      if (leap !== 0 && lunarMonth > leap) idx = lunarMonth;
+    }
+    return getBitInt(days, 1, 12 - idx) === 1 ? 30 : 29;
+  }
+
   /** 农历 → 公历。isLeap 表示该月是否为闰月。
       返回 { year, month, day } 或 null(超出数据范围/该年无此闰月) */
   function toSolar(lunarYear, lunarMonth, lunarDay, isLeap) {
@@ -220,6 +238,7 @@
     toSolar: toSolar,
     toLunar: toLunar,
     leapMonth: leapMonth,
+    monthDays: monthDays,
     dateCN: dateCN,
     monthCN: monthCN,
     dayCN: dayCN,
