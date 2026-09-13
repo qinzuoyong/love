@@ -10,9 +10,12 @@
   <meta property="og:description" content="每一个值得庆祝的日子，都倒计时着期待">
   <meta property="og:type" content="website">
   <meta name="theme-color" content="#f06292">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <script src="assets/js/theme.js"></script>
   <link rel="stylesheet" href="assets/css/style.css">
   <script src="api/config.php"></script>
   <script src="assets/js/config.js"></script>
+  <script src="assets/js/gate.js"></script>
   <script src="assets/js/lunar.js"></script>
 </head>
 <body data-page="anniversary.html">
@@ -20,6 +23,7 @@
   <nav id="nav">
     <div class="nav-inner">
       <a class="brand" href="home.html"><span class="heart">♥</span><span data-brand>我们的家</span></a>
+      <button id="themeBtn" class="theme-btn" type="button" aria-label="切换主题">🌗</button>
       <button id="navToggle" aria-label="菜单">☰</button>
       <ul class="nav-links">
         <li><a href="home.html">🏠 首页</a></li>
@@ -49,6 +53,12 @@
         <!-- 下一个纪念日 -->
         <div class="next-anniv glass reveal" id="nextAnniv"></div>
 
+        <!-- 加到手机日历（.ics 下载导入；InfinityFree 拦截外部抓取，故不做订阅源） -->
+        <div class="ics-bar reveal">
+          <button class="btn" id="icsAllBtn" type="button">📅 一键导入手机日历</button>
+          <button class="btn btn-ghost" id="icsGuideBtn" type="button">怎么导入？</button>
+        </div>
+
         <div class="anniv-grid" id="annivGrid"></div>
       </div>
     </section>
@@ -57,17 +67,35 @@
   <footer>
     <div class="brand-line">© <span id="footYear"></span> · <span class="foot-heart">♥</span> <span data-brand>我们的家</span></div>
     <div>用爱写成的网站 · 每一天都是纪念日</div>
-    <div class="music-credit">背景音乐：Canon in D Major — Kevin MacLeod (incompetech.com) · CC BY 4.0</div>
   </footer>
 
   <button id="musicBtn" aria-label="音乐"><span id="musicIcon">🎵</span></button>
   <button id="topBtn" aria-label="返回顶部">↑</button>
   <canvas id="fxCanvas"></canvas>
 
+  <!-- 日历导入指引 -->
+  <div class="modal" id="icsGuide">
+    <div class="modal-card glass">
+      <h3>📅 把纪念日加到手机日历</h3>
+      <p class="modal-sub">下载 .ics 文件导入一次即可，之后每年都由系统日历提醒你（提前 7 / 3 / 1 天 + 当天上午 9 点）。</p>
+      <ul class="ics-steps">
+        <li><b>iPhone / iPad</b>：下载后从「文件」App 点开，或把文件发到邮件里用邮件附件打开 → 添加全部。</li>
+        <li><b>Android</b>：下载后从通知栏或「下载」目录点开，选择用「日历」打开。</li>
+        <li><b>Google 日历</b>：电脑端打开日历 → 设置 → 导入和导出 → 选择这个 .ics 文件。</li>
+        <li><b>在微信里打不开？</b>点右上角 ⋯ → 在浏览器打开，再下载。</li>
+      </ul>
+      <p class="modal-sub">导入的是本地事件（提醒可以自己改），不是订阅源 —— 这样即使很久不打开网站，纪念日也不会被忘掉。</p>
+      <div class="modal-btns">
+        <button class="btn" data-close type="button">知道了</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     document.getElementById("footYear").textContent = new Date().getFullYear();
   </script>
   <script src="assets/js/countdown.js"></script>
+  <script src="assets/js/calendar.js"></script>
   <script src="assets/js/main.js"></script>
 </body>
 </html>

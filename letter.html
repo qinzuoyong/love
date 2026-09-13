@@ -10,9 +10,12 @@
   <meta property="og:description" content="有些话写在信里，比说出来更长久">
   <meta property="og:type" content="website">
   <meta name="theme-color" content="#f06292">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <script src="assets/js/theme.js"></script>
   <link rel="stylesheet" href="assets/css/style.css">
   <script src="api/config.php"></script>
   <script src="assets/js/config.js"></script>
+  <script src="assets/js/gate.js"></script>
   <script src="assets/js/server.js"></script>
 </head>
 <body data-page="letter.html">
@@ -20,6 +23,7 @@
   <nav id="nav">
     <div class="nav-inner">
       <a class="brand" href="home.html"><span class="heart">♥</span><span data-brand>我们的家</span></a>
+      <button id="themeBtn" class="theme-btn" type="button" aria-label="切换主题">🌗</button>
       <button id="navToggle" aria-label="菜单">☰</button>
       <ul class="nav-links">
         <li><a href="home.html">🏠 首页</a></li>
@@ -57,12 +61,26 @@
       </div>
     </section>
 
+    <!-- 时间胶囊 -->
+    <section class="section" id="capsule" style="padding-top:20px">
+      <div class="container">
+        <div class="section-title reveal">
+          <h2>⏳ 时间胶囊</h2>
+          <p>写给未来的信 · 到开启日才会打开，在那之前连自己也看不到</p>
+        </div>
+        <div style="text-align:center; margin-bottom: 30px" class="reveal">
+          <button class="btn btn-ghost" id="newCapsuleBtn" type="button">✍️ 写一封给未来的信</button>
+        </div>
+        <div class="capsule-grid" id="capsuleGrid"></div>
+      </div>
+    </section>
+
     <!-- 悄悄话留言板 -->
     <section class="section" id="board" style="padding-top:20px">
       <div class="container">
         <div class="section-title reveal">
           <h2>💬 我们的悄悄话</h2>
-          <p>想说什么就写下来，Ta 打开就能看到（存在本机浏览器里）</p>
+          <p>想说什么就写下来，Ta 打开就能看到（部署到 PHP 主机后存在服务器，跨设备共享）</p>
         </div>
         <div class="board glass reveal">
           <div class="board-input">
@@ -79,7 +97,6 @@
   <footer>
     <div class="brand-line">© <span id="footYear"></span> · <span class="foot-heart">♥</span> <span data-brand>我们的家</span></div>
     <div>用爱写成的网站 · 每一天都是纪念日</div>
-    <div class="music-credit">背景音乐：Canon in D Major — Kevin MacLeod (incompetech.com) · CC BY 4.0</div>
   </footer>
 
   <button id="musicBtn" aria-label="音乐"><span id="musicIcon">🎵</span></button>
@@ -89,7 +106,7 @@
   <div class="modal" id="letterModal">
     <div class="modal-card glass">
       <h3>✍️ 写一封新情书</h3>
-      <p class="modal-sub">写完之后会保存在这个浏览器里，Ta 打开就能看到</p>
+      <p class="modal-sub">写完之后会保存在服务器上（跨设备可见），Ta 打开就能看到</p>
       <input class="field" id="lmTitle" placeholder="标题（如：写给明天的你）" maxlength="30">
       <textarea class="field" id="lmBody" rows="6" placeholder="把想说的话写下来…" maxlength="1000"></textarea>
       <input class="field" id="lmSign" placeholder="署名（如：你的 待定A）" maxlength="20">
@@ -100,10 +117,28 @@
     </div>
   </div>
 
+  <!-- 写时间胶囊 -->
+  <div class="modal" id="capsuleModal">
+    <div class="modal-card glass">
+      <h3>⏳ 写一封给未来的信</h3>
+      <p class="modal-sub">封存之后，在开启日之前谁都打不开（包括你自己）</p>
+      <input class="field" id="cpTitle" placeholder="标题（如：写给一年后的你）" maxlength="30">
+      <textarea class="field" id="cpBody" rows="6" placeholder="把想对未来的 TA 说的话写下来…" maxlength="1000"></textarea>
+      <input class="field" id="cpSign" placeholder="署名（如：你的 待定A）" maxlength="20">
+      <label class="field-label" for="cpDate">开启日期</label>
+      <input class="field" id="cpDate" type="date">
+      <div class="modal-btns">
+        <button class="btn btn-ghost" id="cpCancel" type="button">取消</button>
+        <button class="btn" id="cpSave" type="button">🔒 封存</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     document.getElementById("footYear").textContent = new Date().getFullYear();
   </script>
   <script src="assets/js/letters.js"></script>
+  <script src="assets/js/capsules.js"></script>
   <script src="assets/js/main.js"></script>
 </body>
 </html>
