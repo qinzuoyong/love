@@ -147,7 +147,7 @@ function love_emit_https_upgrade(): void {
        . "  (function () {\n"
        . "    if (location.protocol !== \"http:\") return;\n"
        . "    var h = location.hostname;\n"
-       . "    if (/^(localhost|127\\.|0\\.0\\.0\\.0|10\\.|192\\.|169\\.254\\.)/.test(h)) return;\n"
+       . "    if (/^(localhost|127\\.|0\\.0\\.0\\.0|10\\.|192\\.168\\.|169\\.254\\.)/.test(h)) return;\n"
        . "    if (/^172\\.(1[6-9]|2\\d|3[01])\\./.test(h)) return;\n"
        . "    if (/\\.local$/i.test(h)) return;\n"
        . "    location.replace(location.href.replace(/^http:/, \"https:\"));\n"
