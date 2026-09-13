@@ -10,6 +10,8 @@
   <meta property="og:description" content="一份用心准备的小惊喜">
   <meta property="og:type" content="website">
   <meta name="theme-color" content="#f06292">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <script src="assets/js/theme.js"></script>
   <link rel="stylesheet" href="assets/css/style.css">
   <script src="api/config.php"></script>
   <script src="assets/js/config.js"></script>
@@ -21,14 +23,24 @@
     <span class="big-heart">💗</span>
     <h1 id="unlockTitle">欢迎来到我们的秘密花园</h1>
     <p class="sub" id="unlockSub"></p>
-    <input type="password" id="pwInput" placeholder="输入密码，轻轻叩门" autocomplete="off" maxlength="20">
+    <input type="password" id="pwInput" placeholder="输入密码，轻轻叩门" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="20">
     <button class="btn" id="unlockBtn">🔓 开启我们的世界</button>
     <div class="hint" id="pwHint"></div>
   </div>
 
   <script>
     (function () {
-      var pw = CONFIG.password || "";
+      var gate = window.__SERVER_GATE__ || null;
+      // 服务端状态: __SERVER_GATE__ 由 api/config.php 注入。
+      // 只有「确知服务器没有门禁」或「确认是纯静态托管（接口 404）」才用前端密码比对；
+      // 注入脚本加载失败 / WAF 拦截 / 探测超时时绝不能退化成拿 config.js 的默认密码
+      // 比对 —— 默认密码就写在仓库里（520520），那样门禁等于不存在。
+      var serverRequired = gate ? !!gate.required : null;   // null = 未知
+      /* 四态，初值是 "probing"：只要还没确知服务端的情况，任何方式都不放行。
+         旧实现把初值定为 "none" 且与"明确没设密码"共用同一状态，而 submit() 把
+         "none" 当作可以直接进入 —— 于是探测进行中（或请求挂住时）在密码框按一下
+         回车就跳进了 home.html，一次密码都没校验。 */
+      var mode = "probing";                                 // "probing" | "server" | "local" | "open"
       var input = document.getElementById("pwInput");
       var btn = document.getElementById("unlockBtn");
       var card = document.getElementById("unlockCard");
@@ -38,38 +50,234 @@
       sub.textContent = "这里是 " + CONFIG.names.boy + " ♥ " + CONFIG.names.girl + " 的小世界";
 
       function goIn() {
-        sessionStorage.setItem("love-unlocked", "1");
+        // 浏览器禁用站点存储时 setItem 会抛 SecurityError：不能让"记住已解锁"失败挡住进入
+        try { sessionStorage.setItem("love-unlocked", "1"); } catch (e) {}
+        /* 记下"刚刚验证通过"的时刻。若紧接着又被弹回解锁页，说明浏览器没保存解锁
+           Cookie（见 recentUnlockOk()）—— 那时提示会换成可执行的排查建议，
+           而不是让用户对着"密码不对/又被弹回"反复试。 */
+        try { sessionStorage.setItem("love-unlock-at", String(Date.now())); } catch (e) {}
         location.href = "home.html";
       }
 
-      function fail() {
+      function fail(msg) {
+        try { sessionStorage.removeItem("love-unlock-at"); } catch (e) {}
         card.classList.remove("shake");
         void card.offsetWidth; // 重启动画
         card.classList.add("shake");
         input.value = "";
         input.focus();
-        window.toast && window.toast("密码不对哦，再想想？");
+        window.toast && window.toast(msg || "密码不对哦，再想想？");
       }
 
-      // 未设置密码: 直接进入
-      if (!pw) {
+      /* 30 秒内刚验证通过过 → 现在却还停在解锁页，只可能是"浏览器没把解锁 Cookie 存下来" */
+      function recentUnlockOk() {
+        try {
+          var t = parseInt(sessionStorage.getItem("love-unlock-at") || "0", 10);
+          return t > 0 && (Date.now() - t) < 30000;
+        } catch (e) { return false; }
+      }
+
+      /* 中文输入法下打出的数字/字母是全角（７ 而不是 7）：看着一样，字节完全不同 */
+      function looksFullWidth(s) {
+        return /[\uFF01-\uFF5E\u3000]/.test(s || "");
+      }
+
+      /* 提交失败：恢复按钮并提示。区分失败原因，绝不把中间层的故障说成"密码不对" */
+      function unlockError(msg, extra) {
+        input.disabled = false;
+        btn.disabled = false;
+        btn.textContent = "🔓 开启我们的世界";
+        fail(extra ? msg + "　" + extra : msg);
+      }
+
+      /* 被限流锁定：把剩余时间摆在按钮上并倒计时，而不是闪一条容易错过的 toast。
+         锁定是"防他人反复猜密码"的保护，本身不是故障。 */
+      function startLockCountdown(seconds, msg) {
+        var left = Math.max(1, parseInt(seconds, 10) || 600);
+        input.disabled = true;
+        btn.disabled = true;
+        hint.textContent = msg || "尝试太多次了，先歇一会儿";
+        window.toast && window.toast(msg || "尝试太多次了，先歇一会儿");
+        function paint() {
+          var m = Math.floor(left / 60), s = left % 60;
+          btn.textContent = "🔒 " + (m > 0 ? m + " 分 " : "") + s + " 秒后可再试";
+        }
+        paint();
+        var timer = setInterval(function () {
+          left -= 1;
+          if (left > 0) { paint(); return; }
+          clearInterval(timer);
+          btn.textContent = "🔓 开启我们的世界";
+          input.disabled = false;
+          btn.disabled = false;
+          hint.textContent = "可以再试了（提示：首尾空格会被忽略，中文输入法请切半角）";
+          input.focus();
+        }, 1000);
+      }
+
+      function showInput(text) {
+        mode = "server";
+        input.style.display = "";
+        input.disabled = false;
+        btn.disabled = false;
+        btn.textContent = "🔓 开启我们的世界";
+        hint.textContent = text || "悄悄话：这个密码，只有你们俩知道 😉";
+      }
+
+      function showNoPassword() {
+        mode = "open";
         input.style.display = "none";
+        btn.disabled = false;
         btn.textContent = "💗 进入我们的世界";
         hint.textContent = "（当前未设密码，点按钮直接进入）";
-      } else {
+      }
+
+      // 服务端模式：required=false 直接进；已解锁直接跳；否则显示输入框
+      function beginServerMode(required, alreadyUnlocked) {
+        serverRequired = !!required;
+        if (!required) { showNoPassword(); return; }
+        if (alreadyUnlocked || (gate && gate.ok)) { location.replace("home.html"); return; }
+        /* 刚验证通过却又被弹回解锁页 = 浏览器没把解锁 Cookie 存下来。
+           这种必须说清楚，否则用户只会觉得"密码明明对了却进不去"，然后无限重试。 */
+        if (recentUnlockOk()) {
+          /* 最典型的成因：先用 https 解锁（那枚 Cookie 带 Secure），之后用 http 打开 ——
+             http 请求不会带上 Secure Cookie，而 http 响应又无权覆盖它，于是永久弹回、
+             怎么输都进不去（实测复现）。这一条要优先、明确地说出来。 */
+          var protoNote = location.protocol === "http:"
+            ? "当前用的是 http（不安全连接）：浏览器既不会发送、也不会保存安全 Cookie —— 请改用 https:// 重新打开本站。"
+            : "请检查：是否在用无痕/隐私模式、是否禁用了本站 Cookie，或换系统浏览器打开（内置浏览器常有限制）。";
+          showInput("刚才密码已经验证通过了，但浏览器没能保存解锁状态 🔒 " + protoNote);
+          return;
+        }
+        showInput(/[?&]need=1/.test(location.search) ? "先解锁，才能看里面的内容 🔒" : "");
+      }
+
+      /* 探测没能确知服务端情况（返回的不是 JSON，或干脆连不上）：绝不退化成
+         "拿 config.js 的默认密码比对"。这里当作服务器模式，把密码交给服务端判定；
+         服务器真的连不上时提交会明确报"服务器连不上"，而不是静默放人进去。 */
+      function probeFailed() {
+        showInput("服务器好像不太稳定，请刷新页面后重试");
+      }
+
+      // 纯静态托管：沿用前端密码（旧行为，file:// 与无 PHP 主机）
+      function beginLocalMode() {
+        serverRequired = false;
+        var pw = CONFIG.password || "";
+        if (!pw) { showNoPassword(); return; }
+        mode = "local";
+        input.style.display = "";
+        input.disabled = false;
+        btn.disabled = false;
+        btn.textContent = "🔓 开启我们的世界";
         hint.textContent = "悄悄话：这个密码，只有你们俩知道 😉";
+        var unlocked = false;
+        try { unlocked = sessionStorage.getItem("love-unlocked") === "1"; } catch (e) {}
+        if (unlocked) location.replace("home.html");
+      }
+
+      if (serverRequired !== null) {
+        beginServerMode(serverRequired, false);
+      } else if (!/^https?:/.test(location.protocol)) {
+        beginLocalMode();          // file:// 本地双击打开
+      } else {
+        /* 部署了 PHP 但注入脚本没加载成功：先探测一次服务端。
+           输入框也必须一起禁用 —— 只禁按钮挡不住 Enter（Enter 绑在输入框上）。
+           区分两类失败：
+             - 接口 404/410 → 这台主机根本没有 PHP（GitHub Pages / Netlify 等纯静态），
+               按文档沿用前端密码（否则静态托管的站会直接没法用）；
+             - 其它（200 却是 HTML 挑战页 / 5xx / 超时 / 连不上）→ 有 PHP 但不正常，
+               一律按服务器模式处理，绝不退回前端默认密码。 */
+        input.disabled = true;
+        btn.disabled = true;
+        btn.textContent = "检查中…";
+        var settled = false;
+        var ctrl = (typeof AbortController === "function") ? new AbortController() : null;
+        var timer = setTimeout(function () {
+          if (settled) return;                    // 探测永久挂住时的兜底，不能一直停在"检查中"
+          settled = true;
+          if (ctrl) { try { ctrl.abort(); } catch (e) {} }
+          probeFailed();
+        }, 8000);
+        function finish() { settled = true; clearTimeout(timer); }
+        fetch("api/unlock.php", { method: "GET", signal: ctrl ? ctrl.signal : undefined })
+          .then(function (r) {
+            if (r.status === 404 || r.status === 410) {
+              // 迟到的 404：超时已经按"服务器不稳定"处理过了，就不要再用前端密码兜底
+              if (!settled) { finish(); beginLocalMode(); }
+              return null;
+            }
+            if (!r.ok) throw new Error("http " + r.status);
+            return r.json();
+          })
+          .then(function (j) {
+            if (settled || j === null) return;    // 已由超时分支处理（纯静态）→ 不覆盖
+            finish();
+            if (j && typeof j.required === "boolean") beginServerMode(j.required, j.unlocked === true);
+            else probeFailed();
+          })
+          .catch(function () {
+            if (settled) return;
+            finish();
+            probeFailed();
+          });
+      }
+
+      function serverSubmit() {
+        if (btn.disabled) return;
+        /* 提交前 trim：尾随空格是手机键盘的高频误输入（服务端也会 trim，这里先挡一道），
+           同时留着原始输入用于下面把"混进了什么"说清楚 */
+        var typed = input.value;
+        var pw = typed.trim();
+        btn.disabled = true;
+        btn.textContent = "验证中…";
+        fetch("api/unlock.php", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "unlock", password: pw }),
+        })
+          /* 先按文本读再自己解析：契约是 JSON，但主机防护层/网关可能在中间返回 HTML
+             （挑战页、502/504 错误页）。旧实现直接 r.json() 失败后被 catch 成空对象，
+             一律显示"密码不对" —— 把真正的故障伪装成密码问题，用户永远查不出原因。 */
+          .then(function (r) {
+            return r.text().then(function (t) {
+              var j = null;
+              try { j = JSON.parse(t); } catch (e) {}
+              return { status: r.status, json: j };
+            });
+          })
+          .then(function (res) {
+            var j = res.json;
+            if (j && j.ok) { goIn(); return; }
+            if (!j) {
+              unlockError("服务器返回异常（可能是主机防护拦截或网关故障），请刷新页面后重试");
+              return;
+            }
+            if (res.status === 429) { startLockCountdown(j.retryAfter, j.error); return; }
+            /* 密码确实不对时，把最常见的两种"看着输对了"的原因直接点出来 */
+            var extra = "";
+            if (looksFullWidth(typed)) extra = "（输入里有全角字符，中文输入法下请切到半角再试）";
+            else if (typed !== pw) extra = "（输入首尾多了空格，已自动忽略；若仍失败请核对密码）";
+            unlockError(j.error || "密码不对哦，再想想？", extra);
+          })
+          .catch(function () {
+            unlockError("服务器连不上，请检查网络后重试");
+          });
       }
 
       function submit() {
-        if (!pw) { goIn(); return; }
-        if (input.value === pw) goIn();
-        else fail();
-      }
-
-      // 已解锁过则直接进
-      if (sessionStorage.getItem("love-unlocked") === "1") {
-        location.replace("home.html");
-        return;
+        // 还没确知服务端情况（探测进行中或已挂住）→ 一律不放行，只提示
+        if (mode === "probing") {
+          window.toast && window.toast("正在检查服务器，请稍候…");
+          return;
+        }
+        if (mode === "server") { serverSubmit(); return; }
+        if (mode === "open") { goIn(); return; }     // 服务端明确说"没设密码"
+        if (mode === "local") {                      // 纯静态托管：沿用前端密码
+          if (input.value === (CONFIG.password || "")) goIn();
+          else fail();
+          return;
+        }
+        fail("页面状态异常，请刷新后重试");
       }
 
       btn.addEventListener("click", submit);

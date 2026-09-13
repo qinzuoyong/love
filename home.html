@@ -10,10 +10,13 @@
   <meta property="og:description" content="属于我们两个人的小网站">
   <meta property="og:type" content="website">
   <meta name="theme-color" content="#f06292">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <script src="assets/js/theme.js"></script>
   <link rel="stylesheet" href="assets/css/style.css">
   <script src="api/config.php"></script>
   <script src="assets/js/config.js"></script>
-  <script src="assets/js/lunar.js"></script>
+  <script src="assets/js/gate.js"></script>
+  <!-- lunar.js 只需在页面底部加载一次（原先此处与底部重复加载了两遍） -->
 </head>
 <body data-page="home.html">
 
@@ -21,6 +24,7 @@
   <nav id="nav">
     <div class="nav-inner">
       <a class="brand" href="home.html"><span class="heart">♥</span><span data-brand>我们的家</span></a>
+      <button id="themeBtn" class="theme-btn" type="button" aria-label="切换主题">🌗</button>
       <button id="navToggle" aria-label="菜单">☰</button>
       <ul class="nav-links">
         <li><a href="home.html">🏠 首页</a></li>
@@ -46,6 +50,7 @@
         <div class="hero-btns">
           <a class="btn" href="gallery.html">📸 看我们的相册</a>
           <a class="btn btn-ghost" href="letter.html">💌 读一封情书</a>
+          <button class="btn btn-ghost" id="cardBtn" type="button">🎁 生成纪念卡</button>
         </div>
 
         <!-- 今日特殊日(生日/纪念日当天) -->
@@ -85,8 +90,19 @@
           <div class="progress-card glass reveal">
             <div class="ring-wrap">
               <svg class="ring" id="ringSvg" viewBox="0 0 120 120">
+                <defs>
+                  <!-- SVG 的 stroke 在多数浏览器里不接受 CSS 渐变函数（linear-gradient()），
+                       声明会被整条丢弃、填充环直接不显示。这里改用真正的 SVG 渐变。 -->
+                  <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stop-color="#ff8aab"></stop>
+                    <stop offset="55%" stop-color="#f06292"></stop>
+                    <stop offset="100%" stop-color="#d81b60"></stop>
+                  </linearGradient>
+                </defs>
                 <circle class="ring-bg" cx="60" cy="60" r="54"></circle>
-                <circle class="ring-fill" id="ringFill" cx="60" cy="60" r="54"></circle>
+                <!-- 渐变必须写成 SVG 呈现属性（别挪回外部 CSS 的 stroke: 里）：
+                     样式表内的 url(#id) 在部分浏览器按"样式表基准"解析，取不到本页渐变 -->
+                <circle class="ring-fill" id="ringFill" cx="60" cy="60" r="54" stroke="url(#ringGrad)"></circle>
               </svg>
               <div class="ring-center">
                 <div class="ring-pct" id="ringPct">0%</div>
@@ -101,6 +117,17 @@
             <div class="memory-cap" id="memoryCap"></div>
           </div>
         </div>
+      </div>
+    </section>
+
+    <!-- 每日一问 -->
+    <section class="section" id="daily">
+      <div class="container">
+        <div class="section-title reveal">
+          <h2>💬 每日一问</h2>
+          <p>每天一题 · 两个人都答完，才能看到对方的答案</p>
+        </div>
+        <div class="daily-card glass reveal" id="dailyCard"></div>
       </div>
     </section>
 
@@ -120,7 +147,6 @@
   <footer>
     <div class="brand-line">© <span id="footYear"></span> · <span class="foot-heart">♥</span> <span data-brand>我们的家</span></div>
     <div>用爱写成的网站 · 每一天都是纪念日</div>
-    <div class="music-credit">背景音乐：Canon in D Major — Kevin MacLeod (incompetech.com) · CC BY 4.0</div>
   </footer>
 
   <!-- 悬浮按钮 -->
@@ -157,6 +183,8 @@
         mi++;
         el.textContent = "";
         el.classList.add("show");
+        // 系统开了"减弱动态效果"：直接显示全文，不逐字打字
+        if (window.__loveReduceMotion) { el.textContent = text; return; }
         var i = 0;
         clearInterval(typing);
         typing = setInterval(function () {
@@ -168,6 +196,16 @@
       show();
       setInterval(show, 5200);
 
+      /* 链接白名单：只放行站内相对路径与 http(s)。
+         防止直接编辑 config.js / data/config.json（绕过后台 cfg_link 校验）
+         塞进 javascript: 这类伪协议 —— escHtml 只转义引号，
+         拦不住不需要引号的 javascript:xxx。 */
+      function safeLink(v) {
+        var s = String(v == null ? "" : v).trim();
+        if (/^(https?:\/\/|\.{0,2}\/|#|[A-Za-z0-9_-]+\.html)/i.test(s)) return s;
+        return "#";
+      }
+
       // 介绍卡片
       var grid = document.getElementById("cardGrid");
       CONFIG.homeCards.forEach(function (c, i) {
@@ -175,18 +213,36 @@
         d.className = "feature-card glass reveal";
         d.style.transitionDelay = (i % 3) * 90 + "ms";
         d.innerHTML =
-          '<div class="icon">' + c.icon + "</div>" +
-          "<h3>" + c.title + "</h3>" +
-          "<p>" + c.text + "</p>" +
-          '<a class="link" href="' + c.link + '">' + c.linkText + "</a>";
+          '<div class="icon">' + escHtml(c.icon) + "</div>" +
+          "<h3>" + escHtml(c.title) + "</h3>" +
+          "<p>" + escHtml(c.text) + "</p>" +
+          '<a class="link" href="' + escHtml(safeLink(c.link)) + '">' + escHtml(c.linkText) + "</a>";
         grid.appendChild(d);
       });
 
       document.getElementById("footYear").textContent = new Date().getFullYear();
     })();
   </script>
-  <script src="assets/js/countdown.js"></script>
+  <!-- 纪念卡预览 -->
+  <div class="modal" id="cardModal">
+    <div class="modal-card glass card-modal">
+      <h3>🎁 我们的纪念卡</h3>
+      <p class="modal-sub">保存下来发微信 / 发朋友圈都可以；手机上也可以直接点分享</p>
+      <img id="cardImg" class="card-preview" alt="我们的纪念卡">
+      <div class="modal-btns">
+        <button class="btn btn-ghost" data-close type="button">关闭</button>
+        <button class="btn" id="cardSaveBtn" type="button">📷 保存图片</button>
+        <button class="btn" id="cardShareBtn" type="button" style="display:none">↗ 分享</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="assets/js/lunar.js"></script>
+  <script src="assets/js/calendar.js"></script>
+  <script src="assets/js/sharecard.js"></script>
+  <script src="assets/js/daily.js"></script>
   <script src="assets/js/main.js"></script>
+  <script src="assets/js/countdown.js"></script>
   <script src="assets/js/progress.js"></script>
 </body>
 </html>
