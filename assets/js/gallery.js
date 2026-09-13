@@ -16,8 +16,12 @@
   const S = window.loveServer;
 
   function readLSP(key, fallback) {
-    try { return JSON.parse(localStorage.getItem(key)) || fallback; }
-    catch (e) { return fallback; }
+    /* 解析结果必须是数组：被手工改坏成 "{}" 之类时，下面的 .map 会当场抛
+       "is not a function"，整段脚本（含灯箱与上传）都起不来。 */
+    try {
+      const v = JSON.parse(localStorage.getItem(key));
+      return Array.isArray(v) ? v : fallback;
+    } catch (e) { return fallback; }
   }
   function writeLSP(key, val) {
     try { localStorage.setItem(key, JSON.stringify(val)); return true; }
@@ -28,6 +32,11 @@
   function escapeHtml(str) {
     return String(str == null ? "" : str).replace(/[&<>"']/g, (c) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  // 照片地址：PHP 主机上走 photo.php 代理（需要解锁 Cookie），静态托管保持原路径
+  function photoUrl(src) {
+    return window.lovePhotoUrl ? window.lovePhotoUrl(src) : src;
   }
   // 多来源照片（配置 gallery / 服务器 content.json / 本机）按 src 去重：
   // 旧版后台上传会把同一张同时写进两处，相册页会显示两次
@@ -40,10 +49,26 @@
     });
   }
 
+  /* 本机旧照片补 uid 并写回：删除按钮按 uid 定位（dataset 读出来永远是字符串），
+     旧数据没有 uid 时 find 永远匹配不上 —— ✕ 点了没反应（只改了内存、刷新又回来）。
+     顺手挡掉被改坏的非对象条目。 */
+  function normalizeLocalPhotos() {
+    const list = readLSP(PHOTOS_KEY, []);
+    let changed = false;
+    list.forEach((p, i) => {
+      if (!p || typeof p !== "object") return;
+      if (!p.uid) { p.uid = "p" + Date.now().toString(36) + "_" + i; changed = true; }
+    });
+    if (changed) writeLSP(PHOTOS_KEY, list);
+    return list;
+  }
+
   function localPhotos() {
-    return readLSP(PHOTOS_KEY, []).map((p) => ({
-      src: p.src, cat: "照片", cap: p.cap || "我们的新照片", local: true, uid: p.uid,
-    }));
+    return normalizeLocalPhotos()
+      .filter((p) => p && typeof p === "object" && p.src)
+      .map((p) => ({
+        src: p.src, cat: "照片", cap: p.cap || "我们的新照片", local: true, uid: p.uid,
+      }));
   }
 
   /* 照片列表 = 配置照片 + 本机旧照片（服务器照片稍后异步并入） */
@@ -80,7 +105,7 @@
       item.style.transitionDelay = (i % 6) * 60 + "ms";
       const showDel = p.local || (p.server && p.mine);
       item.innerHTML =
-        '<img src="' + escapeHtml(p.src) + '" alt="' + escapeHtml(p.cap) + '" loading="lazy">' +
+        '<img src="' + escapeHtml(photoUrl(p.src)) + '" alt="' + escapeHtml(p.cap) + '" loading="lazy">' +
         (showDel ? '<button class="photo-del" data-uid="' + escapeHtml(p.uid) + '" aria-label="删除照片">✕</button>' : "") +
         '<figcaption class="cap">' + escapeHtml(p.cap) + "</figcaption>";
       item.addEventListener("click", (e) => {
@@ -113,7 +138,7 @@
       render();
       if (window.toast) window.toast("已删除");
     } else if (p.server && p.mine && S) {
-      S.post({ action: "delete", kind: "photos", uid: uid, deviceId: S.deviceId })
+      S.post({ action: "delete", kind: "photos", uid: uid })
         .then(() => {
           photos = photos.filter((x) => x.uid !== uid);
           rebuildCats();
@@ -139,10 +164,10 @@
         return;
       }
       compressImage(file).then((dataUrl) => {
-        const uid = "p" + Date.now() + Math.floor(Math.random() * 1000);
+        const uid = window.newUid ? window.newUid("p") : "p" + Date.now() + Math.floor(Math.random() * 1000);
         const item = { src: dataUrl, cap: "刚刚添加的照片", uid: uid };
 
-        const pushLocal = () => {
+        const pushLocal = (why) => {
           const list = readLSP(PHOTOS_KEY, []);
           list.push(item);
           if (!writeLSP(PHOTOS_KEY, list)) {
@@ -152,18 +177,22 @@
           photos.push({ src: item.src, cat: "照片", cap: item.cap, local: true, uid: item.uid });
           rebuildCats();
           render();
-          if (window.toast) window.toast("已存到本机（服务器暂不可用）");
+          if (window.toast) window.toast(why || "已存到本机（服务器暂不可用）");
         };
 
         if (!S) { pushLocal(); return; }
-        S.post({ action: "photo_add", dataUrl: dataUrl, cap: item.cap, uid: uid, deviceId: S.deviceId })
+        S.post({ action: "photo_add", dataUrl: dataUrl, cap: item.cap, uid: uid })
           .then((j) => {
-            photos.push({ src: j.record.src, cat: "照片", cap: j.record.cap || item.cap, server: true, mine: true, uid: j.record.uid });
+            photos.push({ src: j.record.src, cat: "照片", cap: j.record.cap || item.cap, server: true, mine: j.record.mine !== false, uid: j.record.uid });
             rebuildCats();
             render();
             if (window.toast) window.toast("照片已上传到服务器 💕");
           })
-          .catch(() => pushLocal());
+          .catch((e) => {
+            // 业务错误（服务端明确拒绝，如限流 429）要如实告诉用户，
+            // 不能一律说"服务器暂不可用"；网络层失败才走兜底文案
+            pushLocal(e && e.server ? "已暂存本机：" + e.message + "（下次打开自动补传）" : null);
+          });
       }).catch(() => {
         if (window.toast) window.toast("图片读取失败，换一张试试");
       });
@@ -186,7 +215,12 @@
             const canvas = document.createElement("canvas");
             canvas.width = w;
             canvas.height = h;
-            canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+            const ctx = canvas.getContext("2d");
+            /* JPEG 没有透明通道：不铺底色的话，透明 PNG 的透明区会被浏览器
+               默认填成黑色。统一铺白底再画。 */
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(0, 0, w, h);
+            ctx.drawImage(img, 0, 0, w, h);
             resolve(canvas.toDataURL("image/jpeg", 0.82));
           };
           img.onerror = () => reject(new Error("decode"));
@@ -202,11 +236,13 @@
   (function syncServer() {
     if (!S) return;
     const locals = readLSP(PHOTOS_KEY, []);
+    const migrated = [];
     let chain = Promise.resolve();
     locals.forEach((item) => {
       chain = chain.then(() =>
-        S.post({ action: "photo_add", dataUrl: item.src, cap: item.cap, uid: item.uid, deviceId: S.deviceId })
-          .then(() => {
+        S.post({ action: "photo_add", dataUrl: item.src, cap: item.cap, uid: item.uid })
+          .then((j) => {
+            if (j && j.record) migrated.push(j.record);   // 记住刚迁移的记录
             // 迁移成功 → 从本机移除（uid 相同服务器会去重，重复打开不会传两遍）
             const list = readLSP(PHOTOS_KEY, []);
             const i = list.findIndex((x) => x.uid === item.uid);
@@ -218,9 +254,14 @@
     chain
       .then(() => S.fetchAll())
       .then((data) => {
-        const extras = (data.photos || []).map((p) => ({
+        // __SERVER_CONTENT__ 是页面加载那一刻的快照，不含刚迁移的记录：
+        // 必须按 uid 合并回来，否则刚迁移的照片会当场消失（刷新才出现）
+        const server = data.photos || [];
+        const seen = new Set(server.map((p) => p && p.uid));
+        const merged = server.concat(migrated.filter((p) => p && p.uid && !seen.has(p.uid)));
+        const extras = merged.map((p) => ({
           src: p.src, cat: "照片", cap: p.cap || "我们的新照片",
-          server: true, mine: p.deviceId === S.deviceId, uid: p.uid,
+          server: true, mine: !!p.mine, uid: p.uid,
         }));
         photos = dedupeBySrc((CONFIG.gallery || []).concat(extras).concat(localPhotos()));
         rebuildCats();
@@ -236,7 +277,7 @@
 
   function openLightbox(i) {
     currentIndex = i;
-    lbImg.src = currentList[i].src;
+    lbImg.src = photoUrl(currentList[i].src);
     lbImg.alt = currentList[i].cap || "";
     updateCap();
     lb.classList.add("open");
@@ -249,7 +290,7 @@
   function step(dir) {
     const n = currentList.length;
     currentIndex = (currentIndex + dir + n) % n;
-    lbImg.src = currentList[currentIndex].src;
+    lbImg.src = photoUrl(currentList[currentIndex].src);
     lbImg.alt = currentList[currentIndex].cap || "";
     updateCap();
   }

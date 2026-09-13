@@ -13,15 +13,21 @@
   const S = window.loveServer;
 
   function readLS(key, fallback) {
-    try { return JSON.parse(localStorage.getItem(key)) || fallback; }
-    catch (e) { return fallback; }
+    /* 解析结果必须是数组：被手工改坏成 "{}" 之类时，下面的 forEach/filter 会立刻
+       抛 "is not a function"，整个 IIFE 随之中断 —— 许愿瓶、留言板、服务器同步
+       全都起不来。非数组一律回退到调用方给的缺省值。 */
+    try {
+      const v = JSON.parse(localStorage.getItem(key));
+      return Array.isArray(v) ? v : fallback;
+    } catch (e) { return fallback; }
   }
   function writeLS(key, val) {
     try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
   }
   // 防 HTML 注入: 所有用户输入内容一律转义后插入
   function escapeHtml(str) {
-    return String(str).replace(/[&<>"']/g, (c) =>
+    // null/undefined 兜底：老数据缺字段时不该渲染成字面量 "undefined"
+    return String(str == null ? "" : str).replace(/[&<>"']/g, (c) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
   // 本机旧数据补 uid（服务器去重靠 uid，重复打开不会传两遍）
@@ -29,6 +35,9 @@
     const list = readLS(key, []);
     let changed = false;
     list.forEach((it, i) => {
+      // 本机存储被写成字符串数组（或被手工改坏）时，给原始值赋属性在严格模式下
+      // 会直接抛 TypeError，整段脚本随之中断 —— 先挡掉非对象条目。
+      if (!it || typeof it !== "object") return;
       if (!it.uid) { it.uid = prefix + Date.now().toString(36) + "_" + i; changed = true; }
     });
     if (changed) writeLS(key, list);
@@ -61,7 +70,7 @@
       '    <div class="letter-body">' + body + "</div>" +
       '    <div class="sign">—— ' + sign + "</div>" +
       (canDel
-        ? '<button class="env-del" data-uid="' + lt.uid + '" data-kind="' + (lt.server ? "server" : "local") + '">🗑 删除这封信</button>'
+        ? '<button class="env-del" data-uid="' + escapeHtml(lt.uid) + '" data-kind="' + (lt.server ? "server" : "local") + '">🗑 删除这封信</button>'
         : "") +
       "  </div>" +
       "</div>"
@@ -80,11 +89,17 @@
 
     letterGrid.innerHTML = "";
     all.forEach((lt) => {
-      const canDel = lt.local || (lt.server && lt.deviceId === S.deviceId);
+      const canDel = !!lt.local || !!lt.mine;   // 归属由服务器判定（前端拿不到任何凭据）
       const env = document.createElement("div");
       env.className = "envelope reveal handwritten";
       env.innerHTML = letterHTML(lt, true, canDel);
-      env.addEventListener("click", () => env.classList.toggle("open"));
+      /* 点"删除这封信"时不翻信封：信封自己的 click（冒泡先于 letterGrid 的
+         委托）会把 open 切换一次，随后删除重渲染掩盖 —— 视觉上闪一下。
+         委托层的 e.stopPropagation 挡不住这里，必须在信封侧放行删除按钮。 */
+      env.addEventListener("click", (e) => {
+        if (e.target && e.target.closest && e.target.closest(".env-del")) return;
+        env.classList.toggle("open");
+      });
       letterGrid.appendChild(env);
     });
     (CONFIG.letters || []).forEach((lt) => {
@@ -117,7 +132,7 @@
         renderLetters();
         toast("已删除");
       } else if (kind === "server" && S) {
-        S.post({ action: "delete", kind: "letters", uid: uid, deviceId: S.deviceId })
+        S.post({ action: "delete", kind: "letters", uid: uid })
           .then(() => {
             serverLetters = serverLetters.filter((x) => x.uid !== uid);
             renderLetters();
@@ -174,17 +189,26 @@
       const rec = {
         date: now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") + "-" + String(now.getDate()).padStart(2, "0"),
         title: title, body: body, sign: sign,
-        uid: "l" + Date.now() + Math.floor(Math.random() * 1000),
+        uid: window.newUid ? window.newUid("l") : "l" + Date.now() + Math.floor(Math.random() * 1000),
       };
       if (S) {
-        S.post({ action: "letter_add", date: rec.date, title: title, body: body, sign: sign, uid: rec.uid, deviceId: S.deviceId })
+        S.post({ action: "letter_add", date: rec.date, title: title, body: body, sign: sign, uid: rec.uid })
           .then((j) => {
             serverLetters.push(j.record);
             closeModal();
             renderLetters();
             toast("情书写好啦，已存到服务器 💌");
           })
-          .catch(() => saveLocalLetter(rec));
+          .catch((err) => {
+            /* 服务端明确拒绝（429 限流 / 未解锁 / 参数错）不等于"服务器不可用"：
+               如实提示，别静默转存本地 —— 否则用户以为存上了，而那条记录会在
+               每次打开页面时被反复重传。口径与 capsules.js 一致。 */
+            if (err && err.server) {
+              toast(err.locked ? "还没解锁，请先回首页解锁 🔒" : (err.message || "服务器拒绝了这次提交"));
+              return;
+            }
+            saveLocalLetter(rec);
+          });
       } else {
         saveLocalLetter(rec);
       }
@@ -201,8 +225,8 @@
       item.style.transitionDelay = (i % 6) * 60 + "ms";
       item.innerHTML =
         '<span class="bottle">' + bottles[i % bottles.length] + "</span>" +
-        '<div class="w-title">' + w.title + "</div>" +
-        '<div class="w-text">' + w.text + "</div>";
+        '<div class="w-title">' + escapeHtml(w.title) + "</div>" +
+        '<div class="w-text">' + escapeHtml(w.text) + "</div>";
       item.addEventListener("click", () => {
         // 同时只能打开一个
         wishGrid.querySelectorAll(".wish.open").forEach((x) => x.classList.remove("open"));
@@ -240,14 +264,14 @@
     }
     boardList.innerHTML = "";
     list.forEach((m) => {
-      const canDel = m.local || (m.server && m.deviceId === S.deviceId);
+      const canDel = !!m.local || !!m.mine;     // 归属由服务器判定
       const item = document.createElement("div");
       item.className = "msg-item";
       item.innerHTML =
         '<div class="msg-main"><b>' + escapeHtml(m.name) + "</b> " +
         '<span class="msg-text">' + escapeHtml(m.text) + "</span></div>" +
         '<div class="msg-side"><span class="msg-time">' + fmtTime(m.ts) + "</span>" +
-        (canDel ? '<button class="msg-del" data-uid="' + m.uid + '" data-kind="' + (m.server ? "server" : "local") + '">✕</button>' : "") +
+        (canDel ? '<button class="msg-del" data-uid="' + escapeHtml(m.uid) + '" data-kind="' + (m.server ? "server" : "local") + '">✕</button>' : "") +
         "</div>";
       boardList.appendChild(item);
     });
@@ -269,21 +293,30 @@
       const name = nameEl.value.trim();
       const text = textEl.value.trim();
       if (!text) { toast("写点什么再发送吧"); return; }
-      const rec = { name: name || "匿名", text: text, ts: Date.now(), uid: "m" + Date.now() + Math.floor(Math.random() * 1000) };
+      const rec = { name: name || "匿名", text: text, ts: Date.now(), uid: (window.newUid ? window.newUid("m") : "m" + Date.now() + Math.floor(Math.random() * 1000)) };
       if (S) {
-        S.post({ action: "message_add", name: rec.name, text: text, uid: rec.uid, deviceId: S.deviceId })
+        S.post({ action: "message_add", name: rec.name, text: text, uid: rec.uid })
           .then((j) => {
             serverMessages.push(j.record);
             nameEl.value = ""; textEl.value = "";
             renderBoard();
             toast("已悄悄写下，存到服务器 💕");
           })
-          .catch(() => saveLocalMessage(rec));
+          .catch((err) => {
+            // 同上：限流/未解锁如实提示，不静默落本机
+            if (err && err.server) {
+              toast(err.locked ? "还没解锁，请先回首页解锁 🔒" : (err.message || "服务器拒绝了这次留言"));
+              return;
+            }
+            saveLocalMessage(rec);
+          });
       } else {
         saveLocalMessage(rec);
       }
     });
     textEl.addEventListener("keydown", (e) => {
+      // 中文输入法选词时的回车是"确认候选词"，不能当成发送
+      if (e.isComposing || e.keyCode === 229) return;
       if (e.key === "Enter") document.getElementById("msgSend").click();
     });
 
@@ -303,7 +336,7 @@
         if (i !== -1) { list.splice(i, 1); writeLS(BOARD_KEY, list); }
         renderBoard();
       } else if (kind === "server" && S) {
-        S.post({ action: "delete", kind: "messages", uid: uid, deviceId: S.deviceId })
+        S.post({ action: "delete", kind: "messages", uid: uid })
           .then(() => {
             serverMessages = serverMessages.filter((x) => x.uid !== uid);
             renderBoard();
@@ -322,10 +355,13 @@
     const msgs = normalizeLocal(BOARD_KEY, "m");
 
     let chain = Promise.resolve();
-    const migrate = (payload, key, prefix) => {
+    const migratedLetters = [];
+    const migratedMessages = [];
+    const migrate = (payload, key, prefix, sink) => {
       chain = chain.then(() =>
         S.post(payload)
-          .then(() => {
+          .then((j) => {
+            if (j && j.record) sink.push(j.record);   // 记住刚迁移的记录，稍后合并
             const list = normalizeLocal(key, prefix);
             const i = list.findIndex((x) => x.uid === payload.uid);
             if (i !== -1) { list.splice(i, 1); writeLS(key, list); }
@@ -334,19 +370,29 @@
       );
     };
     letters.forEach((lt) => migrate(
-      { action: "letter_add", date: lt.date, title: lt.title, body: lt.body, sign: lt.sign, uid: lt.uid, deviceId: S.deviceId },
-      EXTRA_KEY, "l"
+      { action: "letter_add", date: lt.date, title: lt.title, body: lt.body, sign: lt.sign, uid: lt.uid },
+      EXTRA_KEY, "l", migratedLetters
     ));
     msgs.forEach((m) => migrate(
-      { action: "message_add", name: m.name, text: m.text, uid: m.uid, deviceId: S.deviceId },
-      BOARD_KEY, "m"
+      { action: "message_add", name: m.name, text: m.text, uid: m.uid },
+      BOARD_KEY, "m", migratedMessages
     ));
+
+    // __SERVER_CONTENT__ 是"页面加载那一刻"的快照，不含刚迁移的记录，
+    // 所以必须把迁移返回的记录按 uid 合并回来，否则刚迁移的内容会当场消失
+    const mergeByUid = (server, extra) => {
+      const seen = new Set((server || []).map((x) => x && x.uid));
+      return (server || []).concat((extra || []).filter((x) => x && x.uid && !seen.has(x.uid)));
+    };
 
     chain
       .then(() => S.fetchAll())
       .then((data) => {
-        serverLetters = data.letters || [];
-        serverMessages = data.messages || [];
+        /* 迁移期间用户可能又新发了一条（它只存在于内存的 serverX 里，既不在
+           页面加载快照 data 里、也不在 migrated 里）—— 三个来源都要并进来，
+           少并一个就会让刚发出去的内容当场从页面上消失（服务器上其实还在）。 */
+        serverLetters = mergeByUid(mergeByUid(data.letters, migratedLetters), serverLetters);
+        serverMessages = mergeByUid(mergeByUid(data.messages, migratedMessages), serverMessages);
         renderLetters();
         renderBoard();
       })
