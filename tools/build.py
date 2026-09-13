@@ -6,7 +6,6 @@
 2. 给 HTML 中引用的静态资源（css/js/图片）自动加版本戳 ?v=<内容md5前8位>
    - 文件内容改了 → 版本号自动变 → 浏览器必定拉新文件（部署后更新即时生效）
    - 文件没改 → 版本号不变 → 浏览器复用缓存（省流量、加载快）
-   支持 admin/ 等 PHP 页面的 ../assets/... 引用（同样打版本戳）
 
 用法：
     python tools/build.py          # 输出到 dist/
@@ -30,7 +29,7 @@ EXCLUDE_DIRS = {"dist", "tools", "deploy", "data", "uploads", ".git", "__pycache
 EXCLUDE_FILES = {"gen_placeholders.py", "README.md", "LICENSE", ".gitignore"}
 
 # HTML 里的资源引用: src="assets/..." 或 href="assets/..."（含 admin 页的 ../assets/...）
-RES_RE = re.compile(r'(src|href)="((?:\.\./)?assets/[^"?#]+)"')
+RES_RE = re.compile(r'(src|href)="((?:\.\./)?assets/[^"]?#?]+)"')
 
 
 def md5v(path):
@@ -40,6 +39,21 @@ def md5v(path):
         for chunk in iter(lambda: f.read(65536), b""):
             h.update(chunk)
     return h.hexdigest()[:8]
+
+
+def safe_out_dir(out):
+    """输出目录守卫：绝不 rmtrash 掉项目本身或线上运行时目录。
+    （旧版 `python tools/build.py -o .` 会把整个项目清空，
+      `-o /var/www/love/dist` 会把线上 data/、uploads/ 一起删掉）"""
+    out_abs = os.path.abspath(out)
+    root_abs = os.path.abspath(ROOT)
+    if out_abs == root_abs or (root_abs + os.sep).startswith(out_abs + os.sep):
+        sys.exit("拒绝构建：输出目录不能是项目根目录或其上级（会删掉整个项目）\n  out = %s" % out_abs)
+    for guard in ("data", os.path.join("assets", "img", "uploads")):
+        if os.path.exists(os.path.join(out_abs, guard)):
+            sys.exit("拒绝构建：输出目录里已有 %s（像是线上/运行时目录，构建会清空它）\n  out = %s\n"
+                     "请改用空目录，或加 -o 指向别处。" % (guard, out_abs))
+    return out_abs
 
 
 def process_html(src_path, dst_path, versions):
@@ -56,7 +70,8 @@ def process_html(src_path, dst_path, versions):
         return m.group(0)
 
     html = RES_RE.sub(repl, html)
-    with open(dst_path, "w", encoding="utf-8") as f:
+    # 固定写 LF：避免 Windows 构建出 CRLF、Linux 出 LF，导致 dist 字节随平台漂移
+    with open(dst_path, "w", encoding="utf-8", newline="\n") as f:
         f.write(html)
 
 
@@ -64,6 +79,7 @@ def main():
     out = DIST
     if len(sys.argv) >= 3 and sys.argv[1] == "-o":
         out = os.path.abspath(sys.argv[2])
+    out = safe_out_dir(out)
 
     if os.path.exists(out):
         shutil.rmtree(out)
