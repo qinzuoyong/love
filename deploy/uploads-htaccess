@@ -1,15 +1,15 @@
 # 情侣网站 assets/img/uploads/ 保护模板（由 tools/deploy.py 部署为远程 assets/img/uploads/.htaccess）
-# 作用：该目录只存放上传的照片，禁止执行任何脚本、禁止目录列表。
+# 作用：该目录只存放上传的照片；禁止目录列表、禁止脚本执行，
+#       并且**禁止任何直链**——照片只能通过根目录的 photo.php 代理读取
+#       （photo.php 会校验解锁 Cookie，未解锁一律 403）。
 Options -Indexes
 <IfModule mod_php.c>
   php_flag engine off
 </IfModule>
-<FilesMatch "\.(php|phtml|phar|cgi|pl|py)$">
-  <IfModule mod_authz_core.c>
-    Require all denied
-  </IfModule>
-  <IfModule !mod_authz_core.c>
-    Order deny,allow
-    Deny from all
-  </IfModule>
-</FilesMatch>
+<IfModule mod_authz_core.c>
+  Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+  Order deny,allow
+  Deny from all
+</IfModule>

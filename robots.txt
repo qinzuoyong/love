@@ -1,0 +1,52 @@
+# ============================================================
+# 情侣网站 · robots.txt
+# ------------------------------------------------------------
+# 这是一个只给两个人看的小站，不希望被搜索引擎收录，也不希望被
+# AI 训练爬虫抓取。
+#
+# ⚠️ 为什么这里不写 `Disallow: /`：
+#    Google 官方明确「noindex 要生效，页面就不能被 robots.txt 拦住」——
+#    全站 Disallow 会让爬虫根本读不到页面里的 noindex，反而可能留下
+#    「无摘要」的链接。所以这里只挡后台/接口/数据目录，
+#    收录由响应头 `X-Robots-Tag: noindex, nofollow, noarchive`
+#    与页面 <meta name="robots"> 负责。
+#
+# 真正的访问控制不是 robots.txt，而是服务端门禁
+# （api/unlock.php 校验密码 → HttpOnly Cookie → 接口/照片按 Cookie 判定；
+#   旧名 gate.php 会被部分主机的防护系统掐断连接，故改名，见 README）。
+# ============================================================
+
+User-agent: *
+Disallow: /admin/
+Disallow: /api/
+Disallow: /data/
+Disallow: /lib/
+Disallow: /photo.php
+
+# ---------- AI 训练 / 抓取爬虫：一律拒绝 ----------
+User-agent: GPTBot
+Disallow: /
+
+User-agent: OAI-SearchBot
+Disallow: /
+
+User-agent: ChatGPT-User
+Disallow: /
+
+User-agent: ClaudeBot
+Disallow: /
+
+User-agent: Claude-User
+Disallow: /
+
+User-agent: Claude-SearchBot
+Disallow: /
+
+User-agent: Google-Extended
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+User-agent: Bytespider
+Disallow: /
