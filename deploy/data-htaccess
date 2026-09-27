@@ -1,0 +1,15 @@
+# 情侣网站 data/ 目录保护模板（由 tools/deploy.py 部署为远程 data/.htaccess）
+# ⚠️ 同源约束（第七轮 S12-03）：lib/store.php 的 love_protect_data_dir() 内置了一份
+#    与本文件**指令集逐字相同**的文本，并在每次数据写入时按内容比对 —— 与它不一致
+#    就**覆盖**线上这份（没有日志，tools/_verify_remote.py 只会报"线上与本地不一致"）。
+#    改本文件的指令集必须同时改 lib/store.php 那份（或把运行时改成"只补缺不覆盖"），
+#    否则下次任何数据写入都会把线上文件写回旧内容。本注释头同样会被那次覆盖带走。
+# 作用：data/ 存放管理员后台的全部自定义数据，禁止任何外部 HTTP 访问，
+#       只允许服务器上的 PHP 读写。
+<IfModule mod_authz_core.c>
+  Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+  Order deny,allow
+  Deny from all
+</IfModule>

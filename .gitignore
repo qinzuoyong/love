@@ -1,0 +1,97 @@
+# 构建产物（python tools/build.py 重新生成）
+dist/
+
+# Python
+__pycache__/
+*.pyc
+
+# 操作系统 / 编辑器
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# 个人照片与音乐（隐私 / 体积，不进版本库）
+assets/img/*.jpg
+assets/img/*.jpeg
+assets/img/*.png
+assets/img/*.webp
+assets/music/music.mp3
+assets/music/music.dat
+
+# 管理员后台运行时数据（只存在于服务器，绝不上传/入库）
+# data/ = 配置、留言、情书、照片记录、管理员账号
+# assets/img/uploads/ = 上传的照片文件
+data/
+assets/img/uploads/
+
+# 测试脚本(含本机调试用, 不入库)
+tools/_*.py
+tools/_*.js
+tools/_*.json
+
+# 凭据文件（FTP / 服务器 / 令牌）：按设计和 README，它们只在仓库外，
+# 这里再挡一道 —— "git add ." 时手滑拖进来一个也不会被提交。
+# 注意：单靠 .gitignore 挡不住已经进过历史的内容，凭据泄漏只能靠"根本不放进来"。
+# 规则一律用**通用命名**，不写具体目录名（那种写法等于把本地布局也公开了）。
+server*/
+*凭据*
+credentials*
+server*.txt
+*.creds
+credentials.json
+credentials.txt
+credentials*.json
+
+# ⚠️ 上面这几条里，`server*/`、`server*.txt`、`*.creds` 仍是**整名匹配**：
+# 多一个后缀就完全失效，而"给凭据留个备份"恰恰是最常规的操作 —— 最需要防的那份副本
+# 正好挡不住（第四轮 F-S14-02 实测 11/15 漏网）。`*凭据*` 与 `credentials*` 已改成
+# **不分后缀、也匹配目录**的两条通用规则（原先是 `*凭据*/` + `*凭据*.txt` 与
+# `credentials*/`：只认目录，后一条还只认 `.txt`；末尾另补了一组「文件名本身就是
+# 凭据」的整类规则，覆盖 `凭据.json` / `登录信息.txt` / `passwords.csv` 这类副本）。
+# 下面按"变体"补一层：备份/改名后缀、编辑器残留，以及按用户级 AGENTS.md 约定命名的
+# 中文凭据目录（那几个目录名里未必含"凭据"二字，旧规则一条都匹配不到）。
+server*.txt*
+credentials.*
+*服务器*
+*仓库*
+*.bak
+*.orig
+*.old
+*.save
+*~
+
+# 上面那几条只覆盖了 "server*/credentials*/凭据*" 这类命名；现代项目最常见的凭据
+# 载体其实是下面这些形态（.env 文件、SSH/证书私钥、FTP/SFTP 配置、云凭据 json），
+# 第四轮 F-S14-01 实测：它们**整类**不被忽略，`git add .` 会静默提交进公开仓库，
+# 而 README 与 tools/README 都在向读者保证"这类名字已经被挡住"。
+# 补规则时仍守同一条红线：一律通用命名，不写具体目录名/域名/绝对路径。
+.env
+.env.*
+*.env
+*.pem
+*.key
+*.p12
+*.ppk
+*.kdbx
+id_rsa*
+id_ed25519*
+id_ecdsa*
+.ftpconfig
+sftp.json
+ftp-config.json
+secrets*.json
+deploy-config.json
+*.local.php
+
+# ⚠️ 再补一层：**文件名本身就是凭据**的类（不分后缀）。上面那些仍是"按后缀/按具体名枚举"，
+# 于是"给凭据留个副本"最常见的几个形态一条都不命中（第七轮 S14-06 实测漏网：
+# `凭据.json`、`凭据备份.md`、`登录信息.txt`、`passwords.csv`、`.npmrc`、`.netrc`、
+# `ftp-config.json`）。这里改成按"名字里出现凭据类字样"与"放 token 的经典文件名"整类挡，
+# 仍守通用命名红线：不写具体目录名 / 域名 / 绝对路径。
+*登录信息*
+*密码*
+passwords.*
+.npmrc
+.netrc

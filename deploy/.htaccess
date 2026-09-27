@@ -1,0 +1,150 @@
+# ============================================================
+# 情侣网站 · Apache 配置示例(.htaccess)
+# 用法: 把 dist/ 目录内容上传到服务器后, 将本文件放到
+#       网站根目录(宝塔 Apache / 虚拟主机均适用)
+# 部署: 本文件由 tools/deploy.py 的 EXTRA_FILES 清单**每次部署都会上传**
+#       （映射到网站根目录 .htaccess），不需要手工传；改完跑一次 deploy 即可，
+#       再用 tools/_verify_remote.py 回读 sha256 确认字节一致。
+# ============================================================
+
+# ---------- 目录列表：一律关闭 ----------
+# Apache 的 Indexes 默认是**开**（除非主机 vhost 已经全局 `Options -Indexes`），
+# 而 dist/ 里 assets/、assets/css/、assets/js/、assets/img/、api/ 都没有 index 文件。
+# 不关的话，`GET /assets/img/` 会返回 "Index of /assets/img"，把"设计上只能通过
+# photo.php 读"的真实照片**文件名**列出来（照片内容另有下面的图片直连规则 403 兜住）。
+# nginx 那条部署路径默认就关着（autoindex off，且 tools/verify_vps.py 把
+# /data、/lib、/assets/img/uploads 的目录形态列进了 MUST_NOT_200），这条路径补齐后
+# 两条口径一致（第七轮 S12-02）。
+# ⚠️ 上线前先实测一次：部分主机的 AllowOverride 不含 Options，这一行会让整站 500。
+#    若确实不允许，就把"目录列表由主机 vhost 负责"记进 deploy/vps/README.md，
+#    别让这份清单看起来已经关掉了列表。
+Options -Indexes
+
+# ---------- gzip 压缩 ----------
+# 注意：Apache 指令必须一行写完（换行会被当成新指令 → 500），
+# 且 AddOutputFilterByType 属于 mod_filter，需要同时判断 mod_filter
+<IfModule mod_filter.c>
+    <IfModule mod_deflate.c>
+        AddOutputFilterByType DEFLATE text/html text/css application/javascript application/json image/svg+xml
+    </IfModule>
+</IfModule>
+
+# ---------- 缓存策略 ----------
+# 静态资源(带 ?v= 版本号): 30 天缓存, 内容变更版本号自动变
+# HTML: 不缓存, 保证更新即时生效
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/css "access plus 30 days"
+    ExpiresByType application/javascript "access plus 30 days"
+    ExpiresByType image/svg+xml "access plus 30 days"
+    ExpiresByType image/png "access plus 30 days"
+    ExpiresByType image/jpeg "access plus 30 days"
+    ExpiresByType image/webp "access plus 30 days"
+    ExpiresByType text/html "access plus 0 seconds"
+    # 音频缓存：这里写不写都一样 —— 主机边缘层(openresty)按【扩展名】给音频
+    #  无条件追加 "no-store, must-revalidate, max-age=0, proxy-revalidate, no-transform"
+    #   （2026-09-12 实测：Expires / Expires+显式 Cache-Control / AddType
+    #    application/octet-stream .mp3 三种写法都被追加，第三种还会让
+    #    ExpiresByType audio/mpeg 失效、反而更差）。
+    # ✔ 已于 2026-09-13 用「改名」解决（本地提交 63ad3f7）：同字节探针对比实证
+    #   主机按扩展名识别——文件叫 .mp3 被禁缓存，叫 music.dat 就拿到正常的
+    #   30 天缓存（Cache-Control: max-age=2592000, public），且浏览器照样把它
+    #   当音频解码。现役音频文件是 assets/music/music.dat（MUSIC_URL 带 ?v=1）。
+    #   ⚠️ 千万不要给 .dat 加 AddType audio/mpeg —— 边缘层会重新把它识别成
+    #      音频，no-store 就回来了。
+    #   旧 assets/music/music.mp3 保留在服务器上（本清单的 audio/* 头留着给它），
+    #   供仍持有 30 天页面缓存的旧访客使用，2026-10-13 之后才可从服务器删除。
+    ExpiresByType audio/mpeg "access plus 30 days"
+    ExpiresByType audio/mp4 "access plus 30 days"
+    ExpiresByType audio/ogg "access plus 30 days"
+</IfModule>
+
+# ---------- 安全头 ----------
+# 注意：下面这些头**全部**要用 always —— Apache 的 `Header` 不带 always 等价于
+# onsuccess，只作用于 2xx/3xx。缺了 always，403（/data/config.json、被拒的图片直链）
+# 与 404 这些响应上一个头都不带，而偏偏是这些响应最需要 nosniff / X-Frame-Options /
+# Referrer-Policy。nginx 侧（deploy/vps/nginx.conf.template）三个 location 全都带 always，
+# 两条部署路径的响应头必须一致（tools/verify_vps.py 的 REQUIRED_HEADERS 也只守 nginx 那条）。
+# X-Robots-Tag 用 always 还有一层：非 2xx 也带上，防止"被拦住但留下链接"。
+# 注意：不要同时在 robots.txt 里写 Disallow: /，否则爬虫读不到这个头（见 robots.txt 注释）。
+<IfModule mod_headers.c>
+    Header always set X-Robots-Tag "noindex, nofollow, noarchive"
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+    # HSTS：让浏览器在本地就把 http 改写成 https —— 装好之后连明文请求都不再发出。
+    # max-age 故意先给 1 天（渐进上线）：它是一把"浏览器里没有绕过按钮"的锁，万一主机
+    # 证书失效/过期，站点在 max-age 到期前会直接打不开，而用户无法点击继续访问。
+    # 稳定运行一段时间后再调大（改成 31536000）；要撤销就在 https 响应里下发 max-age=0。
+    # 不加 includeSubDomains / preload：本站是免费主机的子域，没必要扩大影响面。
+    # 只有 https 响应里的这一行才会被浏览器采纳（http 响应里的会被忽略），这里用 always
+    # 是为了连 401/403 这类响应也带上。
+    Header always set Strict-Transport-Security "max-age=86400"
+</IfModule>
+
+# ---------- 图片直链保护 ----------
+# 照片只允许通过根目录 photo.php 代理读取（需要解锁 Cookie）。
+# ⚠️ 这一段依赖 photo.php 存在（PHP 环境）。纯静态托管（无 PHP）请删掉它，
+#    否则 assets/img/ 下的 jpg/png/webp/gif 会全部 403。
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # ---------- 强制 https ----------
+    # 解锁凭证/会话凭证都是 Secure Cookie：http 页面既读不到、也无权改写它们，
+    # 所以"先在 https 解锁、之后用 http 打开"会永久被弹回锁页（2026-09-12 实测复现）。
+    # 这里在服务器层把 http 全部 301 到 https，从入口消灭 http/https 混用。
+    # 为什么同时判两个条件：免费主机的 TLS 可能在边缘终止，源站看到的信号不一定可靠；
+    # 两个条件都要求"不是 https"才跳，只要任一信号表示 https 就放行，避免
+    # "https 请求又被当成 http 再跳一次"的无限回环。已实测本主机能正确区分两种协议
+    # （同一段 PHP 在 http 下判定 false、https 下判定 true）。
+    # 替换串不含 ?，所以原查询串（如主机防护的 ?i=1）会被自动保留。
+    #
+    # ⚠️ 已知差异（第七轮 S12-04）：nginx 两条部署路径都有 Host 校验
+    #    （deploy/vps/nginx.conf.template 的 443/80 块各一条 `if ($host != …)`、
+    #    deploy/nginx.conf 的 80 块一条），**这条 Apache 路径没有**，而且跳转目标
+    #    直接取自 %{HTTP_HOST} —— 用任意 Host 打源站会拿到一个指向该 Host 的 301。
+    #    本站跑在共享主机上，陌生域名通常被主机自己的 vhost 路由接走（不像自有 VPS
+    #    那样"任意域名拿到整站"），所以危害限于"把源站当跳转端点"。
+    #    要真正补上得在部署时注入站点域名（不能写进仓库：隐私红线），属需要线上
+    #    实测的改动，暂登记为已知差异。
+    RewriteCond %{HTTPS} !=on
+    RewriteCond %{HTTP:X-Forwarded-Proto} !=https
+    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+
+    # 图片直链保护：照片只允许通过根目录 photo.php 代理读取（需要解锁 Cookie）。
+    # 放在强制 https 之后：http 的图片请求先被跳到 https，而不是先被判 403。
+    # ⚠️ 这一段依赖 photo.php 存在（PHP 环境）。纯静态托管（无 PHP）请删掉它，
+    #    否则 assets/img/ 下的 jpg/png/webp/gif 会全部 403。
+    RewriteRule ^assets/img/[^/]+\.(?:jpe?g|png|webp|gif)$ - [F,L,NC]
+</IfModule>
+
+# ---------- 点文件拒绝 ----------
+# nginx 两条配置（deploy/nginx.conf、deploy/vps/nginx.conf.template）都有
+# `location ~* /\.(?!well-known/) { deny all; }`，Apache 这条路径一条都没有（第四轮 F-S12-1）。
+# Apache 自带的 `<FilesMatch "^\.ht">` 只覆盖 `.ht*`，不覆盖 `.git` / `.env` / `.vscode`
+# 这类点文件。当前产物里确实没有点文件，但"产物里出现点文件"的路是通的：build.py 排除的是
+# 点**目录**，根目录的点**文件**会被复制进 dist/ 并随 deploy.py 上传（同轮 F-S12-5 已把构建侧
+# 一并收口，这里是服务器侧的第二层）。放行 `.well-known`：ACME 验证要用，拒掉它等于让证书续期失败。
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule (^|/)\.(?!well-known/) - [F,L]
+</IfModule>
+
+# ---------- PHP 共享层拒绝直连 ----------
+# lib/ 只有函数与常量定义、没有任何顶层输出（直连只会被 PHP 执行并返回空响应），
+# 所以这条不是"防泄漏源码/数据"，而是**防将来手滑**：有人在 lib/ 里加一行调试输出、
+# 或者把某个共享函数写成会回显入参的样子，直连就会变成一条信息通道。
+# nginx 那条部署路径早就有 `location ^~ /lib/ { deny all; }`（deploy/nginx.conf、
+# deploy/vps/nginx.conf.template），Apache / 虚拟主机这条路径一直是空的（F-S14-04）。
+# ⚠️ 只拒绝**直连**：lib/*.php 仍会被 api/、admin/ 里的 require 正常引入
+#    （require 走文件系统、不经过 HTTP，不受这里影响）。
+<IfModule mod_rewrite.c>
+    RewriteRule ^lib/ - [F,L,NC]
+</IfModule>
+
+# ---------- .ics 日历文件类型（纪念日导出用，可选） ----------
+<IfModule mod_mime.c>
+    AddType text/calendar .ics
+    AddCharset UTF-8 .ics
+</IfModule>

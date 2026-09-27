@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>我们的网站 · 首页</title>
+  <meta name="description" content="属于我们两个人的小网站">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23f06292' d='M12 21s-6.7-4.35-9.33-8.11C.9 10.2 1.6 6.5 4.5 5.3c2.5-1.04 5.05.03 6.5 2.17 1.45-2.14 4-3.21 6.5-2.17 2.9 1.2 3.6 4.9 1.83 7.59C18.7 16.65 12 21 12 21z'/%3E%3C/svg%3E">
+  <meta property="og:title" content="我们的网站 · 首页">
+  <meta property="og:description" content="属于我们两个人的小网站">
+  <meta property="og:type" content="website">
+  <meta name="theme-color" content="#f06292">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <script src="assets/js/theme.js"></script>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script src="api/config.php"></script>
+  <script src="assets/js/config.js"></script>
+  <script src="assets/js/gate.js"></script>
+  <script src="assets/js/lifecycle.js"></script>
+  <!-- lunar.js 只需在页面底部加载一次（原先此处与底部重复加载了两遍） -->
+</head>
+<body data-page="home.html">
+
+  <!-- 导航栏 -->
+  <nav id="nav">
+    <div class="nav-inner">
+      <a class="brand" href="home.html"><span class="heart">♥</span><span data-brand>我们的家</span></a>
+      <button id="themeBtn" class="theme-btn" type="button" aria-label="切换主题">🌗</button>
+      <button id="navToggle" aria-label="菜单">☰</button>
+      <ul class="nav-links">
+        <li><a href="home.html">🏠 首页</a></li>
+        <li><a href="gallery.html">📸 相册</a></li>
+        <li><a href="timeline.html">🕰️ 时光轴</a></li>
+        <li><a href="anniversary.html">🎂 纪念日</a></li>
+        <li><a href="letter.html">💌 情书</a></li>
+        <li><a href="game.html">🎮 小游戏</a></li>
+        <li><a href="achievements.html">🏆 成就</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main id="view">
+    <!-- Hero -->
+    <section class="hero">
+      <div class="hero-inner">
+        <p class="hero-greeting" id="heroGreeting"></p>
+        <h1 class="names" id="heroNames"></h1>
+        <p class="slogan" id="heroSlogan"></p>
+        <div class="rotator">
+          <div class="msg" id="rotMsg"></div>
+        </div>
+        <div class="hero-btns">
+          <a class="btn" href="gallery.html">📸 看我们的相册</a>
+          <a class="btn btn-ghost" href="letter.html">💌 读一封情书</a>
+          <button class="btn btn-ghost" id="cardBtn" type="button">🎁 生成纪念卡</button>
+        </div>
+
+        <!-- 今日特殊日(生日/纪念日当天) -->
+        <div class="today-banner" id="todayBanner" style="display:none"></div>
+      </div>
+    </section>
+
+    <!-- 在一起天数 -->
+    <section class="section stat-band">
+      <div class="container">
+        <div class="stat-grid">
+          <div class="stat-card glass reveal">
+            <div class="num" id="daysNum">0</div>
+            <div class="label">天</div>
+          </div>
+          <div class="stat-card glass reveal" style="transition-delay:80ms">
+            <div class="num" id="hoursNum">00</div>
+            <div class="label">时</div>
+          </div>
+          <div class="stat-card glass reveal" style="transition-delay:160ms">
+            <div class="num" id="minsNum">00</div>
+            <div class="label">分</div>
+          </div>
+          <div class="stat-card glass reveal" style="transition-delay:240ms">
+            <div class="num" id="secsNum">00</div>
+            <div class="label">秒</div>
+          </div>
+        </div>
+        <p class="hint reveal" id="daysHint"></p>
+      </div>
+    </section>
+
+    <!-- 恋爱进度环 + 回忆闪现 -->
+    <section class="section">
+      <div class="container">
+        <div class="progress-row">
+          <div class="progress-card glass reveal">
+            <div class="ring-wrap">
+              <svg class="ring" id="ringSvg" viewBox="0 0 120 120">
+                <defs>
+                  <!-- SVG 的 stroke 在多数浏览器里不接受 CSS 渐变函数（linear-gradient()），
+                       声明会被整条丢弃、填充环直接不显示。这里改用真正的 SVG 渐变。 -->
+                  <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stop-color="#ff8aab"></stop>
+                    <stop offset="55%" stop-color="#f06292"></stop>
+                    <stop offset="100%" stop-color="#d81b60"></stop>
+                  </linearGradient>
+                </defs>
+                <circle class="ring-bg" cx="60" cy="60" r="54"></circle>
+                <!-- 渐变必须写成 SVG 呈现属性（别挪回外部 CSS 的 stroke: 里）：
+                     样式表内的 url(#id) 在部分浏览器按"样式表基准"解析，取不到本页渐变 -->
+                <circle class="ring-fill" id="ringFill" cx="60" cy="60" r="54" stroke="url(#ringGrad)"></circle>
+              </svg>
+              <div class="ring-center">
+                <div class="ring-pct" id="ringPct">0%</div>
+                <div class="ring-label">爱的进度</div>
+              </div>
+            </div>
+            <p class="ring-text" id="ringText"></p>
+          </div>
+          <div class="memory-card glass reveal" style="transition-delay:100ms">
+            <div class="memory-title">📸 我们的回忆</div>
+            <img class="mem-img" id="memoryImg" alt="回忆闪现">
+            <div class="memory-cap" id="memoryCap"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 每日一问 -->
+    <section class="section" id="daily">
+      <div class="container">
+        <div class="section-title reveal">
+          <h2>💬 每日一问</h2>
+          <p>每天一题 · 两个人都答完，才能看到对方的答案</p>
+        </div>
+        <div class="daily-card glass reveal" id="dailyCard"></div>
+      </div>
+    </section>
+
+    <!-- 介绍卡片 -->
+    <section class="section">
+      <div class="container">
+        <div class="section-title reveal">
+          <h2>关于我们</h2>
+          <p>一点一滴，都是爱的证据</p>
+        </div>
+        <div class="card-grid" id="cardGrid"></div>
+      </div>
+    </section>
+  
+
+    <canvas id="fxCanvas"></canvas>
+    <!-- 纪念卡预览 -->
+    <div class="modal" id="cardModal">
+    <div class="modal-card glass card-modal">
+      <h3>🎁 我们的纪念卡</h3>
+      <p class="modal-sub">保存下来发微信 / 发朋友圈都可以；手机上也可以直接点分享</p>
+      <img id="cardImg" class="card-preview" alt="我们的纪念卡">
+      <div class="modal-btns">
+        <button class="btn btn-ghost" data-close type="button">关闭</button>
+        <button class="btn" id="cardSaveBtn" type="button">📷 保存图片</button>
+        <button class="btn" id="cardShareBtn" type="button" style="display:none">↗ 分享</button>
+      </div>
+    </div>
+  </div>
+  </main>
+
+  <!-- 页脚 -->
+  <footer>
+    <div class="brand-line">© <span id="footYear"></span> · <span class="foot-heart">♥</span> <span data-brand>我们的家</span></div>
+    <div>用爱写成的网站 · 每一天都是纪念日</div>
+  </footer>
+
+  <!-- 悬浮按钮 -->
+  <button id="musicBtn" aria-label="音乐"><span id="musicIcon">🎵</span></button>
+  <button id="topBtn" aria-label="返回顶部">↑</button>
+
+
+  <!-- 脚本 -->
+  <script>
+    (function () {
+      // 时段问候语(可用 config.greeting 固定)
+      var greetEl = document.getElementById("heroGreeting");
+      if (greetEl) {
+        var g = (CONFIG.greeting || "").trim();
+        if (!g) {
+          var h = new Date().getHours();
+          var greet = h < 5 ? "夜深了" : h < 9 ? "早上好" : h < 12 ? "上午好" : h < 14 ? "中午好" : h < 18 ? "下午好" : h < 23 ? "晚上好" : "夜深了";
+          g = greet + "，我的" + CONFIG.names.girl;
+        }
+        greetEl.textContent = g;
+      }
+
+      // 标语
+      document.getElementById("heroSlogan").textContent = CONFIG.slogan;
+
+      // 情话轮播(打字机效果)
+      /* 站内切页是"换视图"而不是"换文档"，这段内联脚本每次挂载首页都会**重新执行**
+         —— 它建的两个 setInterval 与一个监听不随视图内容一起消失，不登记就会
+         一次一页地累积（打字机在后台对着已经卸掉的元素一直跑）。
+         lifecycle.js 在 <head> 里、本段之前就绪；非挂载期（直接打开首页）
+         它就是原生的 setInterval/addEventListener，行为不变。 */
+      var LC = window.LoveLifecycle || {
+        every: function (f, ms) { return setInterval(f, ms); },
+        on: function (t, y, f, o) { t.addEventListener(y, f, o); },
+        clear: function (i) { clearInterval(i); clearTimeout(i); },
+      };
+      var msgs = CONFIG.messages && CONFIG.messages.length ? CONFIG.messages : ["我爱你"];
+      var el = document.getElementById("rotMsg");
+      var mi = 0;
+      var typing = null;
+      function show() {
+        el.classList.remove("show");
+        var text = msgs[mi % msgs.length];
+        mi++;
+        el.textContent = "";
+        el.classList.add("show");
+        // 系统开了"减弱动态效果"：直接显示全文，不逐字打字
+        if (window.__loveReduceMotion) { el.textContent = text; return; }
+        var i = 0;
+        LC.clear(typing);
+        typing = LC.every(function () {
+          i++;
+          el.textContent = text.slice(0, i);
+          if (i >= text.length) LC.clear(typing);
+        }, 90);
+      }
+      /* 首帧推迟到 DOMContentLoaded 再跑：本段内联脚本排在 main.js（见文件末尾）之前，
+         此刻 window.__loveReduceMotion 还是 undefined —— 开了系统"减弱动态效果"的人
+         第一轮仍会被逐字打字，要到第二次轮播才正常。timeline.js 用的是同一招。 */
+      if (document.readyState === "loading") LC.on(document, "DOMContentLoaded", show);
+      else show();
+      LC.every(show, 5200);
+
+      /* 链接白名单：只放行站内相对路径与 http(s)。
+         防止直接编辑 config.js / data/config.json（绕过后台 cfg_link 校验）
+         塞进 javascript: 这类伪协议 —— escHtml 只转义引号，
+         拦不住不需要引号的 javascript:xxx。 */
+      function safeLink(v) {
+        var s = String(v == null ? "" : v).trim();
+        if (/^(https?:\/\/|\.{0,2}\/|#|[A-Za-z0-9_-]+\.html)/i.test(s)) return s;
+        return "#";
+      }
+
+      // 介绍卡片
+      var grid = document.getElementById("cardGrid");
+      CONFIG.homeCards.forEach(function (c, i) {
+        var d = document.createElement("div");
+        d.className = "feature-card glass reveal";
+        d.style.transitionDelay = (i % 3) * 90 + "ms";
+        d.innerHTML =
+          '<div class="icon">' + escHtml(c.icon) + "</div>" +
+          "<h3>" + escHtml(c.title) + "</h3>" +
+          "<p>" + escHtml(c.text) + "</p>" +
+          '<a class="link" href="' + escHtml(safeLink(c.link)) + '">' + escHtml(c.linkText) + "</a>";
+        grid.appendChild(d);
+      });
+
+      document.getElementById("footYear").textContent = new Date().getFullYear();
+    })();
+  </script>
+
+
+  <script src="assets/js/lunar.js"></script>
+  <script src="assets/js/calendar.js"></script>
+  <script src="assets/js/sharecard.js"></script>
+  <script src="assets/js/daily.js"></script>
+  <script src="assets/js/main.js"></script>
+  <script src="assets/js/countdown.js"></script>
+  <script src="assets/js/progress.js"></script>
+  <script src="assets/js/shell.js"></script>
+</body>
+</html>

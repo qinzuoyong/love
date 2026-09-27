@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>成就墙 · 我们的关系看板</title>
+  <meta name="description" content="从你们已经留下的痕迹里算出来的成就与关系看板">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23f06292' d='M12 21s-6.7-4.35-9.33-8.11C.9 10.2 1.6 6.5 4.5 5.3c2.5-1.04 5.05.03 6.5 2.17 1.45-2.14 4-3.21 6.5-2.17 2.9 1.2 3.6 4.9 1.83 7.59C18.7 16.65 12 21 12 21z'/%3E%3C/svg%3E">
+  <meta property="og:title" content="成就墙 · 我们的关系看板">
+  <meta property="og:description" content="从你们已经留下的痕迹里算出来的成就与关系看板">
+  <meta property="og:type" content="website">
+  <meta name="theme-color" content="#f06292">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <script src="assets/js/theme.js"></script>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script src="api/config.php"></script>
+  <script src="assets/js/config.js"></script>
+  <script src="assets/js/gate.js"></script>
+  <script src="assets/js/lifecycle.js"></script>
+  <script src="assets/js/server.js"></script>
+</head>
+<body data-page="achievements.html">
+
+  <nav id="nav">
+    <div class="nav-inner">
+      <a class="brand" href="home.html"><span class="heart">♥</span><span data-brand>我们的家</span></a>
+      <button id="themeBtn" class="theme-btn" type="button" aria-label="切换主题">🌗</button>
+      <button id="navToggle" aria-label="菜单">☰</button>
+      <ul class="nav-links">
+        <li><a href="home.html">🏠 首页</a></li>
+        <li><a href="gallery.html">📸 相册</a></li>
+        <li><a href="timeline.html">🕰️ 时光轴</a></li>
+        <li><a href="anniversary.html">🎂 纪念日</a></li>
+        <li><a href="letter.html">💌 情书</a></li>
+        <li><a href="game.html">🎮 小游戏</a></li>
+        <li><a href="achievements.html">🏆 成就</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main id="view">
+    <section class="section" style="padding-top:120px">
+      <div class="container">
+        <div class="section-title reveal">
+          <h2>🏆 我们的成就墙</h2>
+          <p>这些数字都来自你们已经留下的痕迹 —— 没有埋点，没有上传，离线也算得出来</p>
+        </div>
+
+        <!-- 等级卡 -->
+        <div class="ach-top">
+          <div class="ach-card glass reveal" id="achLevel"></div>
+          <div class="ach-side glass reveal">
+            <div class="ach-days-wrap">
+              <div class="ach-days" id="achDays">0</div>
+              <div class="ach-days-label">在 一 起 的 第 天</div>
+            </div>
+            <button class="btn" id="achCardBtn">📤 生成成就卡</button>
+          </div>
+        </div>
+
+        <!-- 关系雷达图 -->
+        <div class="ach-radar-wrap glass reveal">
+          <h3 class="ach-radar-title">五个维度的探索度</h3>
+          <canvas id="achRadar" width="320" height="250"></canvas>
+        </div>
+
+        <!-- 成就分组 -->
+        <div id="achGrid"></div>
+
+        <div class="ach-note glass reveal">
+          <h3>关于这些数字</h3>
+          <ul id="achNote"></ul>
+        </div>
+      </div>
+    </section>
+  
+
+    <!-- 成就卡（沿用首页纪念卡那套 modal 样式，不另起一套 CSS） -->
+    <div class="modal" id="achModal">
+    <div class="modal-card glass card-modal">
+      <h3>🏆 我们的成就卡</h3>
+      <p class="modal-sub">存下来发微信 / 发朋友圈都可以；手机上也可以直接点分享</p>
+      <img id="achImg" class="card-preview" alt="我们的成就卡">
+      <div class="modal-btns">
+        <button class="btn btn-ghost" data-close type="button" id="achClose">关闭</button>
+        <button class="btn" id="achSaveBtn" type="button">📷 保存图片</button>
+        <button class="btn" id="achShareBtn" type="button" style="display:none">↗ 分享</button>
+      </div>
+    </div>
+  </div>
+  </main>
+
+  <footer>
+    <div class="brand-line">© <span id="footYear"></span> · <span class="foot-heart">♥</span> <span data-brand>我们的家</span></div>
+    <div>用爱写成的网站 · 每一天都是纪念日</div>
+  </footer>
+
+  <button id="musicBtn" aria-label="音乐"><span id="musicIcon">🎵</span></button>
+  <button id="topBtn" aria-label="返回顶部">↑</button>
+
+
+  <script>
+    document.getElementById("footYear").textContent = new Date().getFullYear();
+  </script>
+  <script src="assets/js/achievements.js"></script>
+  <script src="assets/js/main.js"></script>
+  <script src="assets/js/shell.js"></script>
+</body>
+</html>
